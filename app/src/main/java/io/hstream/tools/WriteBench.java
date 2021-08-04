@@ -1,7 +1,6 @@
 package io.hstream.tools;
 
 import io.hstream.*;
-import io.hstream.ClientBuilder;
 
 import java.util.Random;
 import java.util.concurrent.ScheduledExecutorService;
@@ -16,6 +15,7 @@ public class WriteBench {
     private static final long APPEND_COUNT = 1000000000;
     private static final int RECORD_SIZE = 100;
     private static final int BATCH_SIZE = 1000;
+    private static final int REPORT_INTERVAL = 3; // seconds
 
     private static AtomicLong appendedCounter = new AtomicLong();
     private static AtomicLong lastReportTs = new AtomicLong();
@@ -41,7 +41,7 @@ public class WriteBench {
             System.out.println("write " + result + " msg/s");
             lastReadCount.set(countNow);
             lastReportTs.set(now);
-        } , 0, 3, TimeUnit.SECONDS);
+        } , REPORT_INTERVAL, REPORT_INTERVAL, TimeUnit.SECONDS);
 
         for(long i = 0; i < APPEND_COUNT; ++i) {
             producer.writeAsync(payload).thenRun(() -> appendedCounter.incrementAndGet());
