@@ -9,19 +9,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import com.google.common.util.concurrent.RateLimiter;
+import picocli.CommandLine;
 
 public class WriteBench {
 
-    private static final String serviceUrl = "localhost:6570";
-    private static final String streamNamePrefix = "write_bench_stream_";
-
-    private static int recordSize = 1024; // bytes
-    private static int flushMills = 10; // ms
-    private static int bufferSize = 1024 * 1024; // bytes
-    private static int streamCount = 100;
-    private static int threadCount = 4;
-    private static int reportIntervalSeconds = 3;
-    private static int rateLimit = 100000;
+    // private static final String serviceUrl = "localhost:6570";
 
     private static ExecutorService executorService;
 
@@ -33,31 +25,48 @@ public class WriteBench {
     private static AtomicLong failedAppends = new AtomicLong();
 
     public static void main(String[] args) throws Exception{
-        HStreamClient client = HStreamClient.builder().serviceUrl(serviceUrl).build();
-        List<List<BufferedProducer>> producersPerThread = new ArrayList<>(threadCount);
-        executorService = Executors.newFixedThreadPool(threadCount);
-        RateLimiter rateLimiter = RateLimiter.create(rateLimit);
+        var options = new Options();
+        var commandLine = new CommandLine(options).parseArgs(args);
+        System.out.println(options);
 
-        for(int i = 0; i < streamCount; ) {
-            List<BufferedProducer> bufferedProducers = new ArrayList<>(streamCount / threadCount);
-            for(int j = 0; j < threadCount; ++j, ++i) {
-                var streamName = streamNamePrefix + i;
+        if(options.helpRequested) {
+            CommandLine.usage(options, System.out);
+            return;
+        }
+
+        HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
+
+        // removeAllStreams(client);
+
+        List<List<BufferedProducer>> producersPerThread = new ArrayList<>(options.threadCount);
+        executorService = Executors.newFixedThreadPool(options.threadCount);
+        RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
+
+        for(int i = 0; i < options.streamCount; ) {
+            List<BufferedProducer> bufferedProducers = new ArrayList<>(options.streamCount / options.threadCount);
+            for(int j = 0; j < options.threadCount; ++j, ++i) {
+                var streamName = options.streamNamePrefix + i;
                 client.createStream(streamName);
-                var bufferedProducer = client.newBufferedProducer().stream(streamName).maxBytesSize(bufferSize).flushIntervalMs(flushMills).recordCountLimit(rateLimit * 2 / (1000 / flushMills)).build();
+                var bufferedProducer = client
+                        .newBufferedProducer()
+                        .stream(streamName)
+                        .maxBytesSize(options.bufferSize)
+                        .flushIntervalMs(options.flushMills)
+                        .recordCountLimit(options.rateLimit * 2 / (1000 / options.flushMills)).build();
                 bufferedProducers.add(bufferedProducer);
             }
             producersPerThread.add(bufferedProducers);
         }
 
         Random random = new Random();
-        byte[] payload = new byte[recordSize];
+        byte[] payload = new byte[options.recordSize];
         random.nextBytes(payload);
         Record record = Record.newBuilder().rawRecord(payload).build();
 
         lastReportTs = System.currentTimeMillis();
         lastReadSuccessAppends = 0;
         lastReadFailedAppends = 0;
-        for(int i = 0; i < threadCount; ++i) {
+        for(int i = 0; i < options.threadCount; ++i) {
             int index = i;
             executorService.submit(() -> {
                 append(rateLimiter, producersPerThread.get(index), record);
@@ -65,14 +74,14 @@ public class WriteBench {
         }
 
         while(true) {
-            Thread.sleep(reportIntervalSeconds * 1000);
+            Thread.sleep(options.reportIntervalSeconds * 1000);
             long now = System.currentTimeMillis();
             long successRead = successAppends.get();
             long failedRead = failedAppends.get();
             long duration = now - lastReportTs;
             double successPerSeconds = (double)(successRead - lastReadSuccessAppends) * 1000 / duration;
             double failurePerSeconds = (double)(failedRead - lastReadFailedAppends) * 1000 / duration;
-            double throughput = (double)(successRead - lastReadSuccessAppends) * recordSize * 1000 / duration / 1024 / 1024;
+            double throughput = (double)(successRead - lastReadSuccessAppends) * options.recordSize * 1000 / duration / 1024 / 1024;
 
             lastReportTs = now;
             lastReadSuccessAppends = successRead;
@@ -100,5 +109,61 @@ public class WriteBench {
             // Thread.yield();
         }
 
+    }
+
+    static void removeAllStreams(HStreamClient client) {
+        var streams = client.listStreams();
+        for(var stream: streams) {
+            client.deleteStream(stream.getStreamName());
+        }
+    }
+
+    static class Options {
+
+        @CommandLine.Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
+        boolean helpRequested = false;
+
+        @CommandLine.Option(names = "--service-url")
+        String serviceUrl = "192.168.0.216:6570";
+
+        @CommandLine.Option(names = "--stream-name-prefix")
+        String streamNamePrefix = "write_bench_stream_";
+
+        @CommandLine.Option(names = "--record-size", description = "in bytes")
+        int recordSize = 1024; // bytes
+
+        @CommandLine.Option(names = "--time-trigger", description = "in ms")
+        int flushMills = 10; // ms
+
+        @CommandLine.Option(names = "--buffer-size", description = "in bytes")
+        int bufferSize = 1024 * 1024; // bytes
+
+        @CommandLine.Option(names = "--stream-count")
+        int streamCount = 100;
+
+        @CommandLine.Option(names = "--thread-count")
+        int threadCount = 4;
+
+        @CommandLine.Option(names = "--report-interval", description = "in seconds")
+        int reportIntervalSeconds = 3;
+
+        @CommandLine.Option(names = "--rate-limit")
+        int rateLimit = 100000;
+
+        @Override
+        public String toString() {
+            return "Options{" +
+                    "helpRequested=" + helpRequested +
+                    ", serviceUrl='" + serviceUrl + '\'' +
+                    ", streamNamePrefix='" + streamNamePrefix + '\'' +
+                    ", recordSize=" + recordSize +
+                    ", flushMills=" + flushMills +
+                    ", bufferSize=" + bufferSize +
+                    ", streamCount=" + streamCount +
+                    ", threadCount=" + threadCount +
+                    ", reportIntervalSeconds=" + reportIntervalSeconds +
+                    ", rateLimit=" + rateLimit +
+                    '}';
+        }
     }
 }
