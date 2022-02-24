@@ -1,0 +1,31 @@
+name: Java CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  java-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        distribution: ["adopt"]
+        java-version: [11]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.java-version }}
+          cache: "gradle"
+      - uses: gradle/wrapper-validation-action@v1
+
+      - name: check Java code format
+        run: |
+          ./gradlew spotlessJavaCheck
+          ./gradlew spotlessGroovyGradleCheck
+      - run: ./gradlew build
