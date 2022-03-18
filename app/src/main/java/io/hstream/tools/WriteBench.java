@@ -12,8 +12,6 @@ import picocli.CommandLine;
 
 public class WriteBench {
 
-  // private static final String serviceUrl = "localhost:6570";
-
   private static ExecutorService executorService;
 
   private static long lastReportTs;
@@ -47,21 +45,23 @@ public class WriteBench {
       for (int j = 0; j < options.threadCount; ++j, ++i) {
         var streamName = options.streamNamePrefix + i;
         client.createStream(streamName);
+        var batchSetting =
+            BatchSetting.newBuilder()
+                .bytesLimit(options.bufferSize)
+                .ageLimit(-1)
+                .recordCountLimit(1000)
+                .build();
+        var flowControlSetting =
+            FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build();
         var bufferedProducer =
             client.newBufferedProducer().stream(streamName)
-                .maxBytesSize(options.bufferSize)
-                .flushIntervalMs(options.flushMills)
-                .recordCountLimit(options.rateLimit * 2 / (1000 / options.flushMills))
+                .batchSetting(batchSetting)
+                .flowControlSetting(flowControlSetting)
                 .build();
         bufferedProducers.add(bufferedProducer);
       }
       producersPerThread.add(bufferedProducers);
     }
-
-    Random random = new Random();
-    byte[] payload = new byte[options.recordSize];
-    random.nextBytes(payload);
-    Record record = Record.newBuilder().rawRecord(payload).build();
 
     lastReportTs = System.currentTimeMillis();
     lastReadSuccessAppends = 0;
@@ -70,7 +70,7 @@ public class WriteBench {
       int index = i;
       executorService.submit(
           () -> {
-            append(rateLimiter, producersPerThread.get(index), record);
+            append(rateLimiter, producersPerThread.get(index), options);
           });
     }
 
@@ -102,11 +102,16 @@ public class WriteBench {
   }
 
   public static void append(
-      RateLimiter rateLimiter, List<BufferedProducer> producers, Record record) {
+      RateLimiter rateLimiter, List<BufferedProducer> producers, Options options) {
+    Random random = new Random();
+    byte[] payload = new byte[options.recordSize];
+    random.nextBytes(payload);
     while (true) {
 
       for (var producer : producers) {
         rateLimiter.acquire();
+        String key = "test_" + random.nextInt(options.orderingKeys);
+        Record record = Record.newBuilder().rawRecord(payload).orderingKey(key).build();
         producer
             .write(record)
             .handle(
@@ -166,6 +171,12 @@ public class WriteBench {
     @CommandLine.Option(names = "--rate-limit")
     int rateLimit = 100000;
 
+    @CommandLine.Option(names = "--ordering-keys")
+    int orderingKeys = 10;
+
+    @CommandLine.Option(names = "--total-bytes-limit")
+    int totalBytesLimit = bufferSize * orderingKeys * 10;
+
     @Override
     public String toString() {
       return "Options{"
@@ -191,6 +202,10 @@ public class WriteBench {
           + reportIntervalSeconds
           + ", rateLimit="
           + rateLimit
+          + ", orderingKeys="
+          + orderingKeys
+          + ", totalBytesLimit="
+          + totalBytesLimit
           + '}';
     }
   }
