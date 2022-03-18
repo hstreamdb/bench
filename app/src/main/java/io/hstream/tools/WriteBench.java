@@ -105,14 +105,12 @@ public class WriteBench {
   public static void append(
       RateLimiter rateLimiter, List<BufferedProducer> producers, Options options) {
     Random random = new Random();
-    byte[] payload = new byte[options.recordSize];
-    random.nextBytes(payload);
+    Record record = makeRecord(options);
     while (true) {
-
       for (var producer : producers) {
         rateLimiter.acquire();
         String key = "test_" + random.nextInt(options.orderingKeys);
-        Record record = Record.newBuilder().rawRecord(payload).orderingKey(key).build();
+        record.setOrderingKey(key);
         producer
             .write(record)
             .handle(
@@ -128,6 +126,32 @@ public class WriteBench {
 
       // Thread.yield();
     }
+  }
+
+  static Record makeRecord(Options options) {
+    if (options.payloadType.equals("raw")) {
+      return makeRawRecord(options);
+    }
+    return makeHRecord(options);
+  }
+
+  static Record makeRawRecord(Options options) {
+    Random random = new Random();
+    byte[] payload = new byte[options.recordSize];
+    random.nextBytes(payload);
+    return Record.newBuilder().rawRecord(payload).build();
+  }
+
+  static Record makeHRecord(Options options) {
+    int paddingSize = options.recordSize > 96 ? options.recordSize - 96 : 0;
+    HRecord hRecord =
+        HRecord.newBuilder()
+            .put("int", 10)
+            .put("boolean", true)
+            .put("array", HArray.newBuilder().add(1).add(2).add(3).build())
+            .put("string", "h".repeat(paddingSize))
+            .build();
+    return Record.newBuilder().hRecord(hRecord).build();
   }
 
   static void removeAllStreams(HStreamClient client) {
@@ -184,6 +208,9 @@ public class WriteBench {
     @CommandLine.Option(names = "--total-bytes-limit")
     int totalBytesLimit = bufferSize * orderingKeys * 10;
 
+    @CommandLine.Option(names = "--payload-type")
+    String payloadType = "raw";
+
     @Override
     public String toString() {
       return "Options{"
@@ -213,6 +240,8 @@ public class WriteBench {
           + orderingKeys
           + ", totalBytesLimit="
           + totalBytesLimit
+          + ", payloadType="
+          + payloadType
           + '}';
     }
   }
