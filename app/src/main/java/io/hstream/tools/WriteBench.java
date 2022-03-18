@@ -44,7 +44,8 @@ public class WriteBench {
           new ArrayList<>(options.streamCount / options.threadCount);
       for (int j = 0; j < options.threadCount; ++j, ++i) {
         var streamName = options.streamNamePrefix + i;
-        client.createStream(streamName);
+        client.createStream(
+            streamName, options.streamReplicationFactor, options.streamBacklogDuration);
         var batchSetting =
             BatchSetting.newBuilder()
                 .bytesLimit(options.bufferSize)
@@ -173,6 +174,12 @@ public class WriteBench {
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "write_bench_stream_";
+
+    @CommandLine.Option(names = "--stream-replication-factor")
+    short streamReplicationFactor = 1;
+
+    @CommandLine.Option(names = "--stream-backlog-duration", description = "in seconds")
+    int streamBacklogDuration = 60 * 30;
 
     @CommandLine.Option(names = "--record-size", description = "in bytes")
     int recordSize = 1024; // bytes
