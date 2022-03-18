@@ -45,14 +45,14 @@ public class WriteBench {
       for (int j = 0; j < options.threadCount; ++j, ++i) {
         var streamName = options.streamNamePrefix + i;
         client.createStream(streamName);
-        var batchSetting = BatchSetting.newBuilder()
+        var batchSetting =
+            BatchSetting.newBuilder()
                 .bytesLimit(options.bufferSize)
                 .ageLimit(-1)
                 .recordCountLimit(1000)
                 .build();
-        var flowControlSetting = FlowControlSetting.newBuilder()
-            .bytesLimit(options.totalBytesLimit)
-            .build();
+        var flowControlSetting =
+            FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build();
         var bufferedProducer =
             client.newBufferedProducer().stream(streamName)
                 .batchSetting(batchSetting)
