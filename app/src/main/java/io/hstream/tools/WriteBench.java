@@ -5,6 +5,7 @@ import io.hstream.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -43,14 +44,14 @@ public class WriteBench {
       List<BufferedProducer> bufferedProducers =
           new ArrayList<>(options.streamCount / options.threadCount);
       for (int j = 0; j < options.threadCount; ++j, ++i) {
-        var streamName = options.streamNamePrefix + i;
+        var streamName = options.streamNamePrefix + i + UUID.randomUUID();
         client.createStream(
             streamName, options.streamReplicationFactor, options.streamBacklogDuration);
         var batchSetting =
             BatchSetting.newBuilder()
-                .bytesLimit(options.bufferSize)
-                .ageLimit(-1)
-                .recordCountLimit(1000)
+                .bytesLimit(options.batchBytesLimit)
+                .ageLimit(options.batchAgeLimit)
+                .recordCountLimit(-1)
                 .build();
         var flowControlSetting =
             FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build();
@@ -184,17 +185,17 @@ public class WriteBench {
     @CommandLine.Option(names = "--record-size", description = "in bytes")
     int recordSize = 1024; // bytes
 
-    @CommandLine.Option(names = "--time-trigger", description = "in ms")
-    int flushMills = 10; // ms
+    @CommandLine.Option(names = "--batch-age-limit", description = "in ms")
+    int batchAgeLimit = 10; // ms
 
-    @CommandLine.Option(names = "--buffer-size", description = "in bytes")
-    int bufferSize = 1024 * 1024; // bytes
+    @CommandLine.Option(names = "--batch-bytes-limit", description = "in bytes")
+    int batchBytesLimit = 1024 * 1024; // bytes
 
     @CommandLine.Option(names = "--stream-count")
-    int streamCount = 100;
+    int streamCount = 1;
 
     @CommandLine.Option(names = "--thread-count")
-    int threadCount = 4;
+    int threadCount = 1;
 
     @CommandLine.Option(names = "--report-interval", description = "in seconds")
     int reportIntervalSeconds = 3;
@@ -206,43 +207,10 @@ public class WriteBench {
     int orderingKeys = 10;
 
     @CommandLine.Option(names = "--total-bytes-limit")
-    int totalBytesLimit = bufferSize * orderingKeys * 10;
+    // int totalBytesLimit = batchBytesLimit * orderingKeys * 10;
+    int totalBytesLimit = -1;
 
-    @CommandLine.Option(names = "--payload-type")
+    @CommandLine.Option(names = "--record-type")
     String payloadType = "raw";
-
-    @Override
-    public String toString() {
-      return "Options{"
-          + "helpRequested="
-          + helpRequested
-          + ", serviceUrl='"
-          + serviceUrl
-          + '\''
-          + ", streamNamePrefix='"
-          + streamNamePrefix
-          + '\''
-          + ", recordSize="
-          + recordSize
-          + ", flushMills="
-          + flushMills
-          + ", bufferSize="
-          + bufferSize
-          + ", streamCount="
-          + streamCount
-          + ", threadCount="
-          + threadCount
-          + ", reportIntervalSeconds="
-          + reportIntervalSeconds
-          + ", rateLimit="
-          + rateLimit
-          + ", orderingKeys="
-          + orderingKeys
-          + ", totalBytesLimit="
-          + totalBytesLimit
-          + ", payloadType="
-          + payloadType
-          + '}';
-    }
   }
 }

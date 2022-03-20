@@ -1,12 +1,15 @@
 #!/bin/env bash
 
-./app/build/install/app/bin/app \
-  --service-url="127.0.0.1:6570" \
+bin/app \
+  --service-url="192.168.0.216:6570" \
   --stream-count 1 \
   --thread-count 1 \
   --record-size 1024 \
+  --record-type="raw" \
   --rate-limit 500000 \
-  --stream-name-prefix="ff_" \
-  --buffer-size=819200 \
-  --time-trigger=10 \
-  --ordering-keys=5
+  --stream-backlog-duration=600 \
+  --stream-replication-factor=1 \
+  --batch-bytes-limit=819200 \
+  --batch-age-limit=-1 \
+  --ordering-keys=20 \
+  --total-bytes-limit=81920000
