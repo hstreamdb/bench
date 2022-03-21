@@ -144,7 +144,7 @@ public class WriteBench {
   }
 
   static Record makeHRecord(Options options) {
-    int paddingSize = options.recordSize > 96 ? options.recordSize - 96 : 0;
+    int paddingSize = options.recordSize > 80 ? options.recordSize - 80 : 0;
     HRecord hRecord =
         HRecord.newBuilder()
             .put("int", 10)
