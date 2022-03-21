@@ -33,7 +33,9 @@ compileJava {
 }
 
 application {
-    mainClass = 'io.hstream.tools.WriteBench'
+    //mainClass = 'io.hstream.tools.WriteBench'
+    mainClass = 'io.hstream.tools.ReadBench'
+    // mainClass = project.findProperty("chooseMain").toString()
 }
 
 spotless {
