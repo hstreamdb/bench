@@ -88,6 +88,7 @@ public class WriteReadBench {
               * options.recordSize
               * 1000
               / duration
+              / 1024
               / 1024;
       lastFetchedCount = currentFetchedCount;
 
