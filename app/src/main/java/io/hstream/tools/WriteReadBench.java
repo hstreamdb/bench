@@ -4,14 +4,10 @@ import com.google.common.util.concurrent.RateLimiter;
 import io.hstream.*;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
 
 public class WriteReadBench {
-
-  private static ExecutorService executorService;
 
   private static long lastReportTs;
   private static long lastReadSuccessAppends;
@@ -40,7 +36,6 @@ public class WriteReadBench {
     client.createStream(streamName, options.streamReplicationFactor, options.streamBacklogDuration);
 
     // Write
-    executorService = Executors.newFixedThreadPool(options.threadCount);
     RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
     var batchSetting =
         BatchSetting.newBuilder()
@@ -58,7 +53,7 @@ public class WriteReadBench {
     lastReportTs = System.currentTimeMillis();
     lastReadSuccessAppends = 0;
     lastReadFailedAppends = 0;
-    executorService.submit(() -> append(rateLimiter, bufferedProducer, options));
+    new Thread(() -> append(rateLimiter, bufferedProducer, options)).start();
 
     // Read
     fetch(client, streamName, options);
@@ -213,12 +208,6 @@ public class WriteReadBench {
 
     @CommandLine.Option(names = "--batch-bytes-limit", description = "in bytes")
     int batchBytesLimit = 1024 * 1024; // bytes
-
-    @CommandLine.Option(names = "--stream-count")
-    int streamCount = 1;
-
-    @CommandLine.Option(names = "--thread-count")
-    int threadCount = 1;
 
     @CommandLine.Option(names = "--report-interval", description = "in seconds")
     int reportIntervalSeconds = 3;
