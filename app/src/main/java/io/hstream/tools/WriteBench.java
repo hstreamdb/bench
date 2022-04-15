@@ -8,6 +8,8 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
 
@@ -19,8 +21,9 @@ public class WriteBench {
   private static long lastReadSuccessAppends;
   private static long lastReadFailedAppends;
 
-  private static AtomicLong successAppends = new AtomicLong();
-  private static AtomicLong failedAppends = new AtomicLong();
+  private static final AtomicLong successAppends = new AtomicLong();
+  private static final AtomicLong failedAppends = new AtomicLong();
+  private static final AtomicBoolean terminateFlag = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -66,18 +69,19 @@ public class WriteBench {
     }
 
     lastReportTs = System.currentTimeMillis();
+    long terminateTs =
+        options.benchmarkDuration == Long.MAX_VALUE
+            ? Long.MAX_VALUE
+            : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessAppends = 0;
     lastReadFailedAppends = 0;
     for (int i = 0; i < options.threadCount; ++i) {
       int index = i;
-      executorService.submit(
-          () -> {
-            append(rateLimiter, producersPerThread.get(index), options);
-          });
+      executorService.submit(() -> append(rateLimiter, producersPerThread.get(index), options));
     }
 
     while (true) {
-      Thread.sleep(options.reportIntervalSeconds * 1000);
+      Thread.sleep(options.reportIntervalSeconds * 1000L);
       long now = System.currentTimeMillis();
       long successRead = successAppends.get();
       long failedRead = failedAppends.get();
@@ -100,7 +104,13 @@ public class WriteBench {
           String.format(
               "[Append]: success %f record/s, failed %f record/s, throughput %f MB/s",
               successPerSeconds, failurePerSeconds, throughput));
+      if (now >= terminateTs) {
+        terminateFlag.set(true);
+        break;
+      }
     }
+    executorService.shutdown();
+    executorService.awaitTermination(15, TimeUnit.SECONDS);
   }
 
   public static void append(
@@ -109,6 +119,10 @@ public class WriteBench {
     Record record = makeRecord(options);
     while (true) {
       for (var producer : producers) {
+        if (terminateFlag.get()) {
+          producer.close();
+          return;
+        }
         rateLimiter.acquire();
         String key = "test_" + random.nextInt(options.orderingKeys);
         record.setOrderingKey(key);
@@ -207,10 +221,13 @@ public class WriteBench {
     int orderingKeys = 10;
 
     @CommandLine.Option(names = "--total-bytes-limit")
-    // int totalBytesLimit = batchBytesLimit * orderingKeys * 10;
-    int totalBytesLimit = -1;
+    int totalBytesLimit = batchBytesLimit * orderingKeys * 10;
+    // int totalBytesLimit = -1;
 
     @CommandLine.Option(names = "--record-type")
     String payloadType = "raw";
+
+    @CommandLine.Option(names = "--bench-time", description = "in seconds")
+    long benchmarkDuration = Long.MAX_VALUE; // seconds
   }
 }

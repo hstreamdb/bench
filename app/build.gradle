@@ -35,6 +35,7 @@ compileJava {
 application {
     //mainClass = 'io.hstream.tools.WriteBench'
     mainClass = 'io.hstream.tools.ReadBench'
+    //mainClass = 'io.hstream.tools.WriteReadBench'
     // mainClass = project.findProperty("chooseMain").toString()
 }
 

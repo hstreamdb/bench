@@ -11,31 +11,43 @@ import io.hstream.Subscription;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import picocli.CommandLine;
 
 public class ReadBench {
 
   private static long lastReportTs;
   private static long lastReadSuccessReads;
 
-  private static AtomicLong successReads = new AtomicLong();
+  private static final AtomicLong successReads = new AtomicLong();
 
   public static void main(String[] args) throws Exception {
-    var streamName = UUID.randomUUID().toString();
-    var serviceUrl = "192.168.0.216:6570";
-    HStreamClient client = HStreamClient.builder().serviceUrl(serviceUrl).build();
-    client.createStream(streamName, (short) 1, 60 * 60);
-    long totalSize = 100L * 1024 * 1024 * 1024;
-    int recordSize = 1024;
-    int writeRate = 500 * 1024 * 1024 / recordSize;
-    int keyCount = 20;
-    int batchSize = 819200;
-    write(client, streamName, writeRate, totalSize, recordSize, keyCount, batchSize);
+    var options = new Options();
+    var commandLine = new CommandLine(options).parseArgs(args);
+    System.out.println(options);
 
-    System.out.println(String.format("wrote done"));
+    if (options.helpRequested) {
+      CommandLine.usage(options, System.out);
+      return;
+    }
 
-    new Thread(() -> read(client, streamName)).start();
+    var streamName = options.streamNamePrefix + UUID.randomUUID();
+    HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
+    client.createStream(streamName, options.streamReplicationFactor, options.streamBacklogDuration);
+    int writeRate = 500 * 1024 * 1024 / options.recordSize;
+    write(
+        client,
+        streamName,
+        writeRate,
+        options.totalWriteSize,
+        options.recordSize,
+        options.orderingKeys,
+        options.batchSize);
 
+    System.out.println("wrote done");
+
+    var consumer = read(client, streamName);
     lastReportTs = System.currentTimeMillis();
+    var terminateTs = lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessReads = 0;
     int reportIntervalSeconds = 3;
     while (true) {
@@ -46,7 +58,7 @@ public class ReadBench {
       double successPerSeconds = (double) (successRead - lastReadSuccessReads) * 1000 / duration;
       double throughput =
           (double) (successRead - lastReadSuccessReads)
-              * recordSize
+              * options.recordSize
               * 1000
               / duration
               / 1024
@@ -57,7 +69,11 @@ public class ReadBench {
 
       System.out.println(
           String.format("[Read]: %f record/s, throughput %f MB/s", successPerSeconds, throughput));
+      if (terminateTs <= now) {
+        break;
+      }
     }
+    consumer.stopAsync().awaitTerminated();
   }
 
   static void write(
@@ -93,7 +109,7 @@ public class ReadBench {
     bufferedProducer.close();
   }
 
-  static void read(HStreamClient client, String streamName) {
+  static Consumer read(HStreamClient client, String streamName) {
     var subscriptionId = UUID.randomUUID().toString();
     client.createSubscription(
         Subscription.newBuilder().stream(streamName)
@@ -111,6 +127,41 @@ public class ReadBench {
                 })
             .build();
     consumer.startAsync().awaitRunning();
-    consumer.awaitTerminated();
+    return consumer;
+  }
+
+  static class Options {
+    @CommandLine.Option(
+        names = {"-h", "--help"},
+        usageHelp = true,
+        description = "display a help message")
+    boolean helpRequested = false;
+
+    @CommandLine.Option(names = "--service-url")
+    String serviceUrl = "192.168.0.216:6570";
+
+    @CommandLine.Option(names = "--stream-name-prefix")
+    String streamNamePrefix = "write_bench_stream_";
+
+    @CommandLine.Option(names = "--stream-replication-factor")
+    short streamReplicationFactor = 1;
+
+    @CommandLine.Option(names = "--stream-backlog-duration", description = "in seconds")
+    int streamBacklogDuration = 60 * 30;
+
+    @CommandLine.Option(names = "--record-size", description = "in bytes")
+    int recordSize = 1024; // bytes
+
+    @CommandLine.Option(names = "--total-write-size", description = "in bytes")
+    long totalWriteSize = 100L * 1024 * 1024 * 1024; // bytes
+
+    @CommandLine.Option(names = "--batch-size", description = "in bytes")
+    int batchSize = 819200; // bytes
+
+    @CommandLine.Option(names = "--ordering-keys")
+    int orderingKeys = 10;
+
+    @CommandLine.Option(names = "--bench-time", description = "in seconds")
+    long benchmarkDuration = Long.MAX_VALUE; // seconds
   }
 }
