@@ -22,6 +22,7 @@ public class WriteReadBench {
   private static long lastFetchedCount = 0;
   private static final AtomicLong fetchedCount = new AtomicLong();
   private static final AtomicBoolean terminateFlag = new AtomicBoolean(false);
+  private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -31,6 +32,11 @@ public class WriteReadBench {
     if (options.helpRequested) {
       CommandLine.usage(options, System.out);
       return;
+    }
+
+    if (options.warm >= options.benchmarkDuration) {
+      System.err.println("Warmup time must be less than benchmark duration");
+      System.exit(1);
     }
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
@@ -54,6 +60,19 @@ public class WriteReadBench {
             .batchSetting(batchSetting)
             .flowControlSetting(flowControlSetting)
             .build();
+
+    var thread = new Thread(() -> append(rateLimiter, bufferedProducer, options));
+    thread.start();
+
+    // Read
+    var consumers = fetch(client, streamName, options);
+
+    if (options.warm > 0) {
+      System.out.println("Warmup ...... ");
+      Thread.sleep(options.warm * 1000L);
+      warmupDone.set(true);
+    }
+
     lastReportTs = System.currentTimeMillis();
     long terminateTs =
         options.benchmarkDuration == Long.MAX_VALUE
@@ -61,11 +80,6 @@ public class WriteReadBench {
             : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessAppends = 0;
     lastReadFailedAppends = 0;
-    var thread = new Thread(() -> append(rateLimiter, bufferedProducer, options));
-    thread.start();
-
-    // Read
-    var consumers = fetch(client, streamName, options);
 
     while (true) {
       Thread.sleep(options.reportIntervalSeconds * 1000L);
@@ -130,6 +144,9 @@ public class WriteReadBench {
           .write(record)
           .handle(
               (recordId, throwable) -> {
+                if (!warmupDone.get()) {
+                  return null;
+                }
                 if (throwable != null) {
                   failedAppends.incrementAndGet();
                 } else {
@@ -156,12 +173,16 @@ public class WriteReadBench {
               .subscription(subscriptionId)
               .rawRecordReceiver(
                   (receivedRawRecord, responder) -> {
-                    fetchedCount.incrementAndGet();
+                    if (warmupDone.get()) {
+                      fetchedCount.incrementAndGet();
+                    }
                     responder.ack();
                   })
               .hRecordReceiver(
                   (receivedHRecord, responder) -> {
-                    fetchedCount.incrementAndGet();
+                    if (warmupDone.get()) {
+                      fetchedCount.incrementAndGet();
+                    }
                     responder.ack();
                   })
               .build();
@@ -254,5 +275,8 @@ public class WriteReadBench {
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
     long benchmarkDuration = Long.MAX_VALUE; // seconds
+
+    @CommandLine.Option(names = "--warmup", description = "in seconds")
+    long warm = 60; // seconds
   }
 }

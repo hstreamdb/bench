@@ -10,6 +10,7 @@ import io.hstream.Record;
 import io.hstream.Subscription;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
 
@@ -19,6 +20,7 @@ public class ReadBench {
   private static long lastReadSuccessReads;
 
   private static final AtomicLong successReads = new AtomicLong();
+  private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -28,6 +30,11 @@ public class ReadBench {
     if (options.helpRequested) {
       CommandLine.usage(options, System.out);
       return;
+    }
+
+    if (options.warm >= options.benchmarkDuration) {
+      System.err.println("Warmup time must be less than benchmark duration");
+      System.exit(1);
     }
 
     var streamName = options.streamNamePrefix + UUID.randomUUID();
@@ -46,6 +53,13 @@ public class ReadBench {
     System.out.println("wrote done");
 
     var consumer = read(client, streamName);
+
+    if (options.warm > 0) {
+      System.out.println("Warmup ...... ");
+      Thread.sleep(options.warm * 1000L);
+      warmupDone.set(true);
+    }
+
     lastReportTs = System.currentTimeMillis();
     var terminateTs = lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessReads = 0;
@@ -122,7 +136,9 @@ public class ReadBench {
             .subscription(subscriptionId)
             .rawRecordReceiver(
                 (record, responder) -> {
-                  successReads.incrementAndGet();
+                  if (warmupDone.get()) {
+                    successReads.incrementAndGet();
+                  }
                   responder.ack();
                 })
             .build();
@@ -153,7 +169,7 @@ public class ReadBench {
     int recordSize = 1024; // bytes
 
     @CommandLine.Option(names = "--total-write-size", description = "in bytes")
-    long totalWriteSize = 100L * 1024 * 1024 * 1024; // bytes
+    long totalWriteSize = 30L * 1024 * 1024 * 1024; // bytes
 
     @CommandLine.Option(names = "--batch-size", description = "in bytes")
     int batchSize = 819200; // bytes
@@ -163,5 +179,8 @@ public class ReadBench {
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
     long benchmarkDuration = Long.MAX_VALUE; // seconds
+
+    @CommandLine.Option(names = "--warmup", description = "in seconds")
+    long warm = 60; // seconds
   }
 }

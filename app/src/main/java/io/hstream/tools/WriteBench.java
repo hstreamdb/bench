@@ -24,6 +24,7 @@ public class WriteBench {
   private static final AtomicLong successAppends = new AtomicLong();
   private static final AtomicLong failedAppends = new AtomicLong();
   private static final AtomicBoolean terminateFlag = new AtomicBoolean(false);
+  private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -33,6 +34,11 @@ public class WriteBench {
     if (options.helpRequested) {
       CommandLine.usage(options, System.out);
       return;
+    }
+
+    if (options.warm >= options.benchmarkDuration) {
+      System.err.println("Warmup time must be less than benchmark duration");
+      System.exit(1);
     }
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
@@ -68,6 +74,17 @@ public class WriteBench {
       producersPerThread.add(bufferedProducers);
     }
 
+    for (int i = 0; i < options.threadCount; ++i) {
+      int index = i;
+      executorService.submit(() -> append(rateLimiter, producersPerThread.get(index), options));
+    }
+
+    if (options.warm > 0) {
+      System.out.println("Warmup ...... ");
+      Thread.sleep(options.warm * 1000L);
+      warmupDone.set(true);
+    }
+
     lastReportTs = System.currentTimeMillis();
     long terminateTs =
         options.benchmarkDuration == Long.MAX_VALUE
@@ -75,10 +92,6 @@ public class WriteBench {
             : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessAppends = 0;
     lastReadFailedAppends = 0;
-    for (int i = 0; i < options.threadCount; ++i) {
-      int index = i;
-      executorService.submit(() -> append(rateLimiter, producersPerThread.get(index), options));
-    }
 
     while (true) {
       Thread.sleep(options.reportIntervalSeconds * 1000L);
@@ -130,6 +143,10 @@ public class WriteBench {
             .write(record)
             .handle(
                 (recordId, throwable) -> {
+                  if (!warmupDone.get()) {
+                    return null;
+                  }
+
                   if (throwable != null) {
                     failedAppends.incrementAndGet();
                   } else {
@@ -229,5 +246,8 @@ public class WriteBench {
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
     long benchmarkDuration = Long.MAX_VALUE; // seconds
+
+    @CommandLine.Option(names = "--warmup", description = "in seconds")
+    long warm = 60; // seconds
   }
 }
