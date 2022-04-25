@@ -245,7 +245,7 @@ public class WriteBench {
     String payloadType = "raw";
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
-    long benchmarkDuration = Long.MAX_VALUE; // seconds
+    long benchmarkDuration = Integer.MAX_VALUE; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds

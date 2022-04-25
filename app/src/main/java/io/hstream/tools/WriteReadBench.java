@@ -237,7 +237,7 @@ public class WriteReadBench {
     String serviceUrl = "192.168.0.216:6570";
 
     @CommandLine.Option(names = "--stream-name-prefix")
-    String streamNamePrefix = "write_bench_stream_";
+    String streamNamePrefix = "readWrite_bench_stream_";
 
     @CommandLine.Option(names = "--stream-replication-factor")
     short streamReplicationFactor = 1;
@@ -274,7 +274,7 @@ public class WriteReadBench {
     int consumerCount = 1;
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
-    long benchmarkDuration = Long.MAX_VALUE; // seconds
+    long benchmarkDuration = Integer.MAX_VALUE; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
