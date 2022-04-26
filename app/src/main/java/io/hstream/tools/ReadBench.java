@@ -61,7 +61,10 @@ public class ReadBench {
     }
 
     lastReportTs = System.currentTimeMillis();
-    var terminateTs = lastReportTs + options.benchmarkDuration * 1000L;
+    long terminateTs =
+        Long.MAX_VALUE - lastReportTs < options.benchmarkDuration * 1000L
+            ? Long.MAX_VALUE
+            : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessReads = 0;
     int reportIntervalSeconds = 3;
     while (true) {
@@ -178,7 +181,7 @@ public class ReadBench {
     int orderingKeys = 10;
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
-    long benchmarkDuration = Integer.MAX_VALUE; // seconds
+    long benchmarkDuration = Long.MAX_VALUE; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds

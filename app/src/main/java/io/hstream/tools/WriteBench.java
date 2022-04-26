@@ -87,7 +87,7 @@ public class WriteBench {
 
     lastReportTs = System.currentTimeMillis();
     long terminateTs =
-        options.benchmarkDuration == Long.MAX_VALUE
+        Long.MAX_VALUE - lastReportTs < options.benchmarkDuration * 1000L
             ? Long.MAX_VALUE
             : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessAppends = 0;
@@ -245,7 +245,7 @@ public class WriteBench {
     String payloadType = "raw";
 
     @CommandLine.Option(names = "--bench-time", description = "in seconds")
-    long benchmarkDuration = Integer.MAX_VALUE; // seconds
+    long benchmarkDuration = Long.MAX_VALUE; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
