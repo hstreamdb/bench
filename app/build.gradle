@@ -33,9 +33,55 @@ compileJava {
 }
 
 application {
-    //mainClass = 'io.hstream.tools.WriteBench'
-    mainClass = 'io.hstream.tools.ReadBench'
-    // mainClass = project.findProperty("chooseMain").toString()
+    mainClass = 'io.hstream.tools.WriteBench'
+    //    mainClass = 'io.hstream.tools.ReadBench'
+    //    mainClass = 'io.hstream.tools.WriteReadBench'
+    //    mainClass = project.findProperty("chooseMain").toString()
+}
+
+apply plugin: 'java'
+task(readBench, dependsOn: 'classes', type: JavaExec) {
+    main = 'io.hstream.tools.ReadBench'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(writeBench, dependsOn: 'classes', type: JavaExec) {
+    main = 'io.hstream.tools.WriteBench'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(readWriteBench, dependsOn: 'classes', type: JavaExec) {
+    main = 'io.hstream.tools.WriteReadBench'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task writeBenchTask(type: CreateStartScripts) {
+    mainClassName = 'io.hstream.tools.WriteBench'
+    applicationName = 'writeBench'
+    outputDir = startScripts.outputDir
+    classpath = startScripts.classpath
+}
+
+task readBenchTask(type: CreateStartScripts) {
+    mainClassName = 'io.hstream.tools.ReadBench'
+    applicationName = 'readBench'
+    outputDir = startScripts.outputDir
+    classpath = startScripts.classpath
+}
+
+task end2endBenchTask(type: CreateStartScripts) {
+    mainClassName = 'io.hstream.tools.WriteReadBench'
+    applicationName = 'writeReadBench'
+    outputDir = startScripts.outputDir
+    classpath = startScripts.classpath
+}
+
+applicationDistribution.into("bin") {
+    duplicatesStrategy= DuplicatesStrategy.EXCLUDE
+    from(writeBenchTask)
+    from(readBenchTask)
+    from(end2endBenchTask)
+    fileMode = 0755
 }
 
 spotless {
