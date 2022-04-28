@@ -61,11 +61,15 @@ public class ReadBench {
     }
 
     lastReportTs = System.currentTimeMillis();
-    long terminateTs =
-        Long.MAX_VALUE - lastReportTs < options.benchmarkDuration * 1000L
-            ? Long.MAX_VALUE
-            : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessReads = 0;
+
+    long benchDurationMs;
+    if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
+      benchDurationMs = Long.MAX_VALUE;
+    } else {
+      benchDurationMs = options.benchmarkDuration * 1000L;
+    }
+
     int reportIntervalSeconds = 3;
     while (true) {
       Thread.sleep(reportIntervalSeconds * 1000);
@@ -86,7 +90,8 @@ public class ReadBench {
 
       System.out.println(
           String.format("[Read]: %f record/s, throughput %f MB/s", successPerSeconds, throughput));
-      if (terminateTs <= now) {
+      benchDurationMs -= duration;
+      if (benchDurationMs <= 0) {
         break;
       }
     }
@@ -180,8 +185,10 @@ public class ReadBench {
     @CommandLine.Option(names = "--ordering-keys")
     int orderingKeys = 10;
 
-    @CommandLine.Option(names = "--bench-time", description = "in seconds")
-    long benchmarkDuration = Long.MAX_VALUE; // seconds
+    @CommandLine.Option(
+        names = "--bench-time",
+        description = "in seconds. set bench-time <= 0 means run as long as possible.")
+    long benchmarkDuration = -1; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds

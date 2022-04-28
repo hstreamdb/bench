@@ -36,7 +36,7 @@ public class WriteBench {
       return;
     }
 
-    if (options.warm >= options.benchmarkDuration) {
+    if (options.benchmarkDuration > 0 && options.warm >= options.benchmarkDuration) {
       System.err.println("Warmup time must be less than benchmark duration");
       System.exit(1);
     }
@@ -86,12 +86,14 @@ public class WriteBench {
     }
 
     lastReportTs = System.currentTimeMillis();
-    long terminateTs =
-        Long.MAX_VALUE - lastReportTs < options.benchmarkDuration * 1000L
-            ? Long.MAX_VALUE
-            : lastReportTs + options.benchmarkDuration * 1000L;
     lastReadSuccessAppends = 0;
     lastReadFailedAppends = 0;
+    long benchDurationMs;
+    if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
+      benchDurationMs = Long.MAX_VALUE;
+    } else {
+      benchDurationMs = options.benchmarkDuration * 1000L;
+    }
 
     while (true) {
       Thread.sleep(options.reportIntervalSeconds * 1000L);
@@ -117,7 +119,8 @@ public class WriteBench {
           String.format(
               "[Append]: success %f record/s, failed %f record/s, throughput %f MB/s",
               successPerSeconds, failurePerSeconds, throughput));
-      if (now >= terminateTs) {
+      benchDurationMs -= duration;
+      if (benchDurationMs <= 0) {
         terminateFlag.set(true);
         break;
       }
@@ -244,8 +247,10 @@ public class WriteBench {
     @CommandLine.Option(names = "--record-type")
     String payloadType = "raw";
 
-    @CommandLine.Option(names = "--bench-time", description = "in seconds")
-    long benchmarkDuration = Long.MAX_VALUE; // seconds
+    @CommandLine.Option(
+        names = "--bench-time",
+        description = "in seconds. set bench-time <= 0 means run as long as possible")
+    long benchmarkDuration = -1; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
