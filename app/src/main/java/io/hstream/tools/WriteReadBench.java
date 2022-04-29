@@ -34,7 +34,7 @@ public class WriteReadBench {
       return;
     }
 
-    if (options.warm >= options.benchmarkDuration) {
+    if (options.benchmarkDuration > 0 && options.warm >= options.benchmarkDuration) {
       System.err.println("Warmup time must be less than benchmark duration");
       System.exit(1);
     }
