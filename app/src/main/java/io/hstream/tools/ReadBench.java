@@ -32,7 +32,7 @@ public class ReadBench {
       return;
     }
 
-    if (options.warm >= options.benchmarkDuration) {
+    if (options.benchmarkDuration > 0 && options.warm >= options.benchmarkDuration) {
       System.err.println("Warmup time must be less than benchmark duration");
       System.exit(1);
     }
@@ -177,7 +177,7 @@ public class ReadBench {
     int recordSize = 1024; // bytes
 
     @CommandLine.Option(names = "--total-write-size", description = "in bytes")
-    long totalWriteSize = 30L * 1024 * 1024 * 1024; // bytes
+    long totalWriteSize = 100L * 1024 * 1024 * 1024; // bytes
 
     @CommandLine.Option(names = "--batch-size", description = "in bytes")
     int batchSize = 819200; // bytes
@@ -188,7 +188,7 @@ public class ReadBench {
     @CommandLine.Option(
         names = "--bench-time",
         description = "in seconds. set bench-time <= 0 means run as long as possible.")
-    long benchmarkDuration = -1; // seconds
+    long benchmarkDuration = 400; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
