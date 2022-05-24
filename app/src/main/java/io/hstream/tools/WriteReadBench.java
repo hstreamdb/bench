@@ -148,7 +148,7 @@ public class WriteReadBench {
         return;
       }
       rateLimiter.acquire();
-      String key = "test_" + random.nextInt(options.orderingKeys);
+      String key = "test_" + random.nextInt(options.partitionKeys);
       record.setPartitionKey(key);
       producer
           .write(record)
@@ -273,11 +273,11 @@ public class WriteReadBench {
     @CommandLine.Option(names = "--rate-limit")
     int rateLimit = 100000;
 
-    @CommandLine.Option(names = "--ordering-keys")
-    int orderingKeys = 10;
+    @CommandLine.Option(names = "--partition-keys")
+    int partitionKeys = 10000;
 
     @CommandLine.Option(names = "--total-bytes-limit")
-    int totalBytesLimit = batchBytesLimit * orderingKeys * 10;
+    int totalBytesLimit = batchBytesLimit * shardCount * 5;
     // int totalBytesLimit = -1;
 
     @CommandLine.Option(names = "--record-type")
