@@ -8,6 +8,7 @@ import io.hstream.FlowControlSetting;
 import io.hstream.HStreamClient;
 import io.hstream.Record;
 import io.hstream.Subscription;
+import java.util.ArrayList;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -37,22 +38,45 @@ public class ReadBench {
       System.exit(1);
     }
 
-    var streamName = options.streamNamePrefix + UUID.randomUUID();
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
-    client.createStream(streamName, options.streamReplicationFactor, options.streamBacklogDuration);
-    int writeRate = 500 * 1024 * 1024 / options.recordSize;
-    write(
-        client,
-        streamName,
-        writeRate,
-        options.totalWriteSize,
-        options.recordSize,
-        options.orderingKeys,
-        options.batchSize);
+    var streams = new ArrayList<String>();
+    var threads = new ArrayList<Thread>();
+    var eachSize = options.totalWriteSize / options.streamCnt;
+    for (int i = 0; i < options.streamCnt; i++) {
+      var streamName = options.streamNamePrefix + UUID.randomUUID();
+      client.createStream(
+          streamName, options.streamReplicationFactor, options.streamBacklogDuration);
+      streams.add(streamName);
+      int writeRate = 500 * 1024 * 1024 / options.recordSize;
+      var thread =
+          new Thread(
+              () ->
+                  write(
+                      client,
+                      streamName,
+                      writeRate,
+                      eachSize,
+                      options.recordSize,
+                      options.orderingKeys,
+                      options.batchSize));
+      threads.add(thread);
+    }
+    for (var thread : threads) {
+      thread.start();
+    }
+    for (var thread : threads) {
+      thread.join();
+    }
 
     System.out.println("wrote done");
+    // Sleep for a period of time to allow the node's CPU and memory metrics to reset
+    // to facilitate getting the correct monitoring data
+    Thread.sleep(10000L);
 
-    var consumer = read(client, streamName);
+    var consumers = new ArrayList<Consumer>();
+    for (int i = 0; i < options.streamCnt; i++) {
+      consumers.add(read(client, streams.get(i)));
+    }
 
     if (options.warm > 0) {
       System.out.println("Warmup ...... ");
@@ -95,7 +119,10 @@ public class ReadBench {
         break;
       }
     }
-    consumer.stopAsync().awaitTerminated();
+
+    for (Consumer c : consumers) {
+      c.stopAsync().awaitTerminated();
+    }
   }
 
   static void write(
@@ -164,6 +191,9 @@ public class ReadBench {
     @CommandLine.Option(names = "--service-url")
     String serviceUrl = "192.168.0.216:6570";
 
+    @CommandLine.Option(names = "--streams", description = "number of streams")
+    int streamCnt = 16;
+
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "read_bench_stream_";
 
@@ -177,7 +207,7 @@ public class ReadBench {
     int recordSize = 1024; // bytes
 
     @CommandLine.Option(names = "--total-write-size", description = "in bytes")
-    long totalWriteSize = 100L * 1024 * 1024 * 1024; // bytes
+    long totalWriteSize = 16 * 20L * 1024 * 1024 * 1024; // bytes
 
     @CommandLine.Option(names = "--batch-size", description = "in bytes")
     int batchSize = 819200; // bytes
@@ -191,6 +221,6 @@ public class ReadBench {
     long benchmarkDuration = 400; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
-    long warm = 60; // seconds
+    long warm = 20; // seconds
   }
 }
