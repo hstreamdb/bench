@@ -16,7 +16,7 @@ configurations.all {
 }
 
 dependencies {
-    implementation 'io.hstream:hstreamdb-java:0.8.0-SNAPSHOT'
+    implementation 'io.hstream:hstreamdb-java:0.9.0-SNAPSHOT'
     implementation 'com.google.guava:guava:30.1.1-jre'
 
     implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
@@ -55,6 +55,11 @@ task(readWriteBench, dependsOn: 'classes', type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
 }
 
+task(writeQPSBench, dependsOn: 'classes', type: JavaExec) {
+    main = 'io.hstream.tools.WriteQpsBench'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
 task writeBenchTask(type: CreateStartScripts) {
     mainClassName = 'io.hstream.tools.WriteBench'
     applicationName = 'writeBench'
@@ -72,6 +77,13 @@ task readBenchTask(type: CreateStartScripts) {
 task end2endBenchTask(type: CreateStartScripts) {
     mainClassName = 'io.hstream.tools.WriteReadBench'
     applicationName = 'writeReadBench'
+    outputDir = startScripts.outputDir
+    classpath = startScripts.classpath
+}
+
+task writeQpsBenchTask(type: CreateStartScripts) {
+    mainClassName = 'io.hstream.tools.WriteQpsBench'
+    applicationName = 'writeQpsBench'
     outputDir = startScripts.outputDir
     classpath = startScripts.classpath
 }
