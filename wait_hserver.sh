@@ -1,6 +1,7 @@
 #!/bin/bash
+set -e
 
-timeout=600
+timeout=120
 container_name=wait_hserver
 
 docker run -td --rm --name $container_name --network host hstreamdb/hstream bash

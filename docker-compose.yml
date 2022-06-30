@@ -25,6 +25,7 @@ services:
         --internal-port 6571 \
         --server-id 100 \
         --address $$(hostname -I | awk '{print $$1}') \
+        --seed-nodes $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
         --store-admin-host hstore --store-admin-port 6440
