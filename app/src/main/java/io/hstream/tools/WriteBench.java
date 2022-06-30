@@ -101,6 +101,7 @@ public class WriteBench {
       benchDurationMs = options.benchmarkDuration * 1000L;
     }
 
+    long totalStartTime = System.currentTimeMillis();
     while (true) {
       Thread.sleep(options.reportIntervalSeconds * 1000L);
       long now = System.currentTimeMillis();
@@ -131,6 +132,18 @@ public class WriteBench {
         break;
       }
     }
+
+    long totalEndTime = System.currentTimeMillis();
+    long totalSuccess = successAppends.get();
+    double totalAvgThroughput =
+        (double) totalSuccess
+            * options.recordSize
+            * 1000
+            / (totalEndTime - totalStartTime)
+            / 1024
+            / 1024;
+    System.out.println(String.format("TotalAvgThroughput: %.2f MB/s", totalAvgThroughput));
+
     executorService.shutdown();
     executorService.awaitTermination(15, TimeUnit.SECONDS);
   }
