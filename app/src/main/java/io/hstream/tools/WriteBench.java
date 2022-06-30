@@ -135,6 +135,12 @@ public class WriteBench {
     executorService.awaitTermination(15, TimeUnit.SECONDS);
   }
 
+  private static void stopAllBufferedProducers(List<BufferedProducer> producers) {
+    for (var producer : producers) {
+      producer.close();
+    }
+  }
+
   public static void append(
       RateLimiter rateLimiter, List<BufferedProducer> producers, Options options) {
     Random random = new Random();
@@ -142,7 +148,7 @@ public class WriteBench {
     while (true) {
       for (var producer : producers) {
         if (terminateFlag.get()) {
-          producer.close();
+          stopAllBufferedProducers(producers);
           return;
         }
         rateLimiter.acquire();
