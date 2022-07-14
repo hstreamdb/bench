@@ -54,7 +54,10 @@ public class WriteQpsBench {
       for (int j = 0; j < options.threadCount; ++j, ++i) {
         var streamName = options.streamNamePrefix + i + UUID.randomUUID();
         client.createStream(
-            streamName, options.streamReplicationFactor, options.streamBacklogDuration);
+            streamName,
+            options.streamReplicationFactor,
+            options.shardCount,
+            options.streamBacklogDuration);
         var producer = client.newProducer().stream(streamName).build();
         Producers.add(producer);
       }
@@ -208,13 +211,16 @@ public class WriteQpsBench {
     boolean helpRequested = false;
 
     @CommandLine.Option(names = "--service-url")
-    String serviceUrl = "192.168.0.216:6570";
+    String serviceUrl = "127.0.0.1:6570";
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "write_qps_stream_";
 
     @CommandLine.Option(names = "--stream-replication-factor")
     short streamReplicationFactor = 1;
+
+    @CommandLine.Option(names = "--shard-count")
+    int shardCount = 1;
 
     @CommandLine.Option(names = "--stream-backlog-duration", description = "in seconds")
     int streamBacklogDuration = 60 * 30;

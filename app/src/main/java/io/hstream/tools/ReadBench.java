@@ -39,7 +39,11 @@ public class ReadBench {
 
     var streamName = options.streamNamePrefix + UUID.randomUUID();
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
-    client.createStream(streamName, options.streamReplicationFactor, options.streamBacklogDuration);
+    client.createStream(
+        streamName,
+        options.streamReplicationFactor,
+        options.shardCount,
+        options.streamBacklogDuration);
     int writeRate = 500 * 1024 * 1024 / options.recordSize;
     write(
         client,
@@ -162,13 +166,16 @@ public class ReadBench {
     boolean helpRequested = false;
 
     @CommandLine.Option(names = "--service-url")
-    String serviceUrl = "192.168.0.216:6570";
+    String serviceUrl = "127.0.0.1:6570";
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "read_bench_stream_";
 
     @CommandLine.Option(names = "--stream-replication-factor")
     short streamReplicationFactor = 1;
+
+    @CommandLine.Option(names = "--shard-count")
+    int shardCount = 1;
 
     @CommandLine.Option(names = "--stream-backlog-duration", description = "in seconds")
     int streamBacklogDuration = 60 * 30;
