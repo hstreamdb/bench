@@ -61,7 +61,10 @@ public class WriteBench {
       for (int j = 0; j < options.threadCount; ++j, ++i) {
         var streamName = options.streamNamePrefix + i + UUID.randomUUID();
         client.createStream(
-            streamName, options.streamReplicationFactor, options.streamBacklogDuration);
+            streamName,
+            options.streamReplicationFactor,
+            options.shardCount,
+            options.streamBacklogDuration);
         var batchSetting =
             BatchSetting.newBuilder()
                 .bytesLimit(options.batchBytesLimit)
@@ -230,7 +233,7 @@ public class WriteBench {
     boolean helpRequested = false;
 
     @CommandLine.Option(names = "--service-url")
-    String serviceUrl = "192.168.0.216:6570";
+    String serviceUrl = "127.0.0.1:6570";
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "write_bench_stream_";
@@ -252,6 +255,9 @@ public class WriteBench {
 
     @CommandLine.Option(names = "--stream-count")
     int streamCount = 1;
+
+    @CommandLine.Option(names = "--shard-count")
+    int shardCount = 1;
 
     @CommandLine.Option(names = "--thread-count")
     int threadCount = 1;
@@ -278,6 +284,6 @@ public class WriteBench {
     long benchmarkDuration = -1; // seconds
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
-    long warm = 60; // seconds
+    long warm = 1; // seconds
   }
 }
