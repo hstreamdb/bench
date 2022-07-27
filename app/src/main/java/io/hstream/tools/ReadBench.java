@@ -128,7 +128,7 @@ public class ReadBench {
       for (int j = 0; j < keyCount; ++j, ++i) {
         rateLimiter.acquire();
         bufferedProducer.write(
-            Record.newBuilder().orderingKey("key-" + j).rawRecord(payload).build());
+            Record.newBuilder().partitionKey("key-" + j).rawRecord(payload).build());
       }
     }
     bufferedProducer.flush();
