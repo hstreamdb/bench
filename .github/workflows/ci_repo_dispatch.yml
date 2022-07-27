@@ -37,7 +37,7 @@ jobs:
               --service-url=127.0.0.1:6570 \
               --thread-count=2 \
               --stream-count=10 \
-              --ordering-keys=2 \
+              --shard-count=2 \
               --stream-backlog-duration=60 \
               --stream-replication-factor=1 \
               --record-size=1024 \

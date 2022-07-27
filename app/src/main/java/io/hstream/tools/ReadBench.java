@@ -51,7 +51,7 @@ public class ReadBench {
         writeRate,
         options.totalWriteSize,
         options.recordSize,
-        options.orderingKeys,
+        options.shardCount,
         options.batchSize);
 
     System.out.println("wrote done");
@@ -124,12 +124,10 @@ public class ReadBench {
     byte[] payload = new byte[recordSize];
     random.nextBytes(payload);
     RateLimiter rateLimiter = RateLimiter.create(writeRate);
-    for (long i = 0; i < totalSize / recordSize; ) {
-      for (int j = 0; j < keyCount; ++j, ++i) {
-        rateLimiter.acquire();
-        bufferedProducer.write(
-            Record.newBuilder().partitionKey("key-" + j).rawRecord(payload).build());
-      }
+    for (long i = 0; i < totalSize / recordSize; ++i) {
+      rateLimiter.acquire();
+      bufferedProducer.write(
+          Record.newBuilder().partitionKey("key-" + random.nextInt()).rawRecord(payload).build());
     }
     bufferedProducer.flush();
     bufferedProducer.close();
@@ -188,9 +186,6 @@ public class ReadBench {
 
     @CommandLine.Option(names = "--batch-size", description = "in bytes")
     int batchSize = 819200; // bytes
-
-    @CommandLine.Option(names = "--ordering-keys")
-    int orderingKeys = 10;
 
     @CommandLine.Option(
         names = "--bench-time",
