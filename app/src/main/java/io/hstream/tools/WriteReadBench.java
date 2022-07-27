@@ -2,6 +2,7 @@ package io.hstream.tools;
 
 import com.google.common.util.concurrent.RateLimiter;
 import io.hstream.*;
+import io.hstream.Record;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -146,7 +147,7 @@ public class WriteReadBench {
       }
       rateLimiter.acquire();
       String key = "test_" + random.nextInt(options.orderingKeys);
-      record.setOrderingKey(key);
+      record.setPartitionKey(key);
       producer
           .write(record)
           .handle(
