@@ -3,6 +3,7 @@ package io.hstream.tools;
 import com.google.common.util.concurrent.RateLimiter;
 import io.hstream.BatchSetting;
 import io.hstream.BufferedProducer;
+import io.hstream.CompressionType;
 import io.hstream.Consumer;
 import io.hstream.FlowControlSetting;
 import io.hstream.HStreamClient;
@@ -37,6 +38,8 @@ public class ReadBench {
       System.exit(1);
     }
 
+    var compresstionType = Utils.getCompressionType(options.compTp);
+
     var streamName = options.streamNamePrefix + UUID.randomUUID();
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
     client.createStream(
@@ -52,7 +55,8 @@ public class ReadBench {
         options.totalWriteSize,
         options.recordSize,
         options.orderingKeys,
-        options.batchSize);
+        options.batchSize,
+        compresstionType);
 
     System.out.println("wrote done");
 
@@ -109,7 +113,8 @@ public class ReadBench {
       long totalSize,
       int recordSize,
       int keyCount,
-      int batchSize) {
+      int batchSize,
+      CompressionType compressionType) {
     BufferedProducer bufferedProducer =
         client.newBufferedProducer().stream(streamName)
             .batchSetting(
@@ -118,6 +123,7 @@ public class ReadBench {
                     .ageLimit(-1)
                     .recordCountLimit(-1)
                     .build())
+            .compressionType(compressionType)
             .flowControlSetting(FlowControlSetting.newBuilder().bytesLimit(batchSize * 100).build())
             .build();
     Random random = new Random();
@@ -199,5 +205,8 @@ public class ReadBench {
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
+
+    @CommandLine.Option(names = "--compresstion", description = "Enum values: [None|Gzip]")
+    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.None;
   }
 }

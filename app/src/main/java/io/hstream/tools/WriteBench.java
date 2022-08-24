@@ -48,6 +48,7 @@ public class WriteBench {
     }
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
+    var compresstionType = Utils.getCompressionType(options.compTp);
 
     // removeAllStreams(client);
 
@@ -77,6 +78,7 @@ public class WriteBench {
             client.newBufferedProducer().stream(streamName)
                 .batchSetting(batchSetting)
                 .flowControlSetting(flowControlSetting)
+                .compressionType(compresstionType)
                 .build();
         bufferedProducers.add(bufferedProducer);
       }
@@ -285,5 +287,8 @@ public class WriteBench {
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 1; // seconds
+
+    @CommandLine.Option(names = "--compresstion", description = "Enum values: [None|Gzip]")
+    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.None;
   }
 }
