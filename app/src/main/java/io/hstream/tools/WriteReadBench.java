@@ -41,6 +41,7 @@ public class WriteReadBench {
     }
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
+    var compresstionType = Utils.getCompressionType(options.compTp);
 
     // Stream
     String streamName = options.streamNamePrefix + UUID.randomUUID();
@@ -63,6 +64,7 @@ public class WriteReadBench {
     var bufferedProducer =
         client.newBufferedProducer().stream(streamName)
             .batchSetting(batchSetting)
+            .compressionType(compresstionType)
             .flowControlSetting(flowControlSetting)
             .build();
 
@@ -291,5 +293,8 @@ public class WriteReadBench {
 
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
+
+    @CommandLine.Option(names = "--compresstion", description = "Enum values: [None|Gzip]")
+    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.None;
   }
 }
