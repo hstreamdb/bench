@@ -288,7 +288,7 @@ public class WriteBench {
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 1; // seconds
 
-    @CommandLine.Option(names = "--compresstion", description = "Enum values: [None|Gzip]")
-    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.None;
+    @CommandLine.Option(names = "--compression", description = "Enum values: [none|gzip]")
+    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.none;
   }
 }
