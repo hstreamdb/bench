@@ -4,15 +4,15 @@ import io.hstream.CompressionType;
 
 public class Utils {
   public enum CompressionAlgo {
-    None,
-    GZip
+    none,
+    gzip
   }
 
   public static CompressionType getCompressionType(CompressionAlgo c) {
     switch (c) {
-      case GZip:
+      case gzip:
         return CompressionType.GZIP;
-      case None:
+      case none:
         return CompressionType.NONE;
       default:
         throw new RuntimeException("Unknown compression type");
