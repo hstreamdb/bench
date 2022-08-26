@@ -50,39 +50,36 @@ public class WriteBench {
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
     var compresstionType = Utils.getCompressionType(options.compTp);
 
-    // removeAllStreams(client);
-
-    List<List<BufferedProducer>> producersPerThread = new ArrayList<>(options.threadCount);
     executorService = Executors.newFixedThreadPool(options.threadCount);
     RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
 
-    for (int i = 0; i < options.streamCount; ) {
-      List<BufferedProducer> bufferedProducers =
-          new ArrayList<>(options.streamCount / options.threadCount);
-      for (int j = 0; j < options.threadCount; ++j, ++i) {
-        var streamName = options.streamNamePrefix + i + UUID.randomUUID();
-        client.createStream(
-            streamName,
-            options.streamReplicationFactor,
-            options.shardCount,
-            options.streamBacklogDuration);
-        var batchSetting =
-            BatchSetting.newBuilder()
-                .bytesLimit(options.batchBytesLimit)
-                .ageLimit(options.batchAgeLimit)
-                .recordCountLimit(-1)
-                .build();
-        var flowControlSetting =
-            FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build();
-        var bufferedProducer =
-            client.newBufferedProducer().stream(streamName)
-                .batchSetting(batchSetting)
-                .flowControlSetting(flowControlSetting)
-                .compressionType(compresstionType)
-                .build();
-        bufferedProducers.add(bufferedProducer);
-      }
-      producersPerThread.add(bufferedProducers);
+    List<List<BufferedProducer>> producersPerThread = new ArrayList<>(options.threadCount);
+    for (int i = 0; i < options.threadCount; i++) {
+      producersPerThread.add(new ArrayList<>());
+    }
+
+    for (int i = 0; i < options.streamCount; i++) {
+      var streamName = options.streamNamePrefix + i + UUID.randomUUID();
+      client.createStream(
+          streamName,
+          options.streamReplicationFactor,
+          options.shardCount,
+          options.streamBacklogDuration);
+      var batchSetting =
+          BatchSetting.newBuilder()
+              .bytesLimit(options.batchBytesLimit)
+              .ageLimit(options.batchAgeLimit)
+              .recordCountLimit(-1)
+              .build();
+      var flowControlSetting =
+          FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build();
+      var bufferedProducer =
+          client.newBufferedProducer().stream(streamName)
+              .batchSetting(batchSetting)
+              .compressionType(compresstionType)
+              .flowControlSetting(flowControlSetting)
+              .build();
+      producersPerThread.get(i % options.threadCount).add(bufferedProducer);
     }
 
     for (int i = 0; i < options.threadCount; ++i) {

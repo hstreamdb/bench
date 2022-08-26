@@ -46,23 +46,23 @@ public class WriteQpsBench {
 
     // removeAllStreams(client);
 
-    List<List<Producer>> producersPerThread = new ArrayList<>(options.threadCount);
     executorService = Executors.newFixedThreadPool(options.threadCount);
     RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
 
-    for (int i = 0; i < options.streamCount; ) {
-      List<Producer> Producers = new ArrayList<>(options.streamCount / options.threadCount);
-      for (int j = 0; j < options.threadCount; ++j, ++i) {
-        var streamName = options.streamNamePrefix + i + UUID.randomUUID();
-        client.createStream(
-            streamName,
-            options.streamReplicationFactor,
-            options.shardCount,
-            options.streamBacklogDuration);
-        var producer = client.newProducer().stream(streamName).build();
-        Producers.add(producer);
-      }
-      producersPerThread.add(Producers);
+    List<List<Producer>> producersPerThread = new ArrayList<>(options.threadCount);
+    for (int i = 0; i < options.threadCount; i++) {
+      producersPerThread.add(new ArrayList<>());
+    }
+
+    for (int i = 0; i < options.streamCount; i++) {
+      var streamName = options.streamNamePrefix + i + UUID.randomUUID();
+      client.createStream(
+          streamName,
+          options.streamReplicationFactor,
+          options.shardCount,
+          options.streamBacklogDuration);
+      var producer = client.newProducer().stream(streamName).build();
+      producersPerThread.get(i % options.threadCount).add(producer);
     }
 
     for (int i = 0; i < options.threadCount; ++i) {
