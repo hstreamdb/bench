@@ -11,5 +11,4 @@ bin/app \
   --stream-replication-factor=1 \
   --batch-bytes-limit=819200 \
   --batch-age-limit=-1 \
-  --ordering-keys=20 \
   --total-bytes-limit=81920000
