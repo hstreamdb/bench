@@ -59,12 +59,17 @@ public class WriteBench {
     }
 
     for (int i = 0; i < options.streamCount; i++) {
-      var streamName = options.streamNamePrefix + i + UUID.randomUUID();
-      client.createStream(
-          streamName,
-          options.streamReplicationFactor,
-          options.shardCount,
-          options.streamBacklogDuration);
+      var streamName = options.streamNamePrefix + i;
+      if (!options.fixedStreamName) {
+        streamName += UUID.randomUUID();
+      }
+      if (!options.doNotCreateStream) {
+        client.createStream(
+            streamName,
+            options.streamReplicationFactor,
+            options.shardCount,
+            options.streamBacklogDuration);
+      }
       var batchSetting =
           BatchSetting.newBuilder()
               .bytesLimit(options.batchBytesLimit)
@@ -251,6 +256,14 @@ public class WriteBench {
 
     @CommandLine.Option(names = "--batch-bytes-limit", description = "in bytes")
     int batchBytesLimit = 1024 * 1024; // bytes
+
+    @CommandLine.Option(names = "--fixed-stream-name")
+    boolean fixedStreamName = false;
+
+    @CommandLine.Option(
+        names = "--not-create-stream",
+        description = "only meaningful if fixedStreamName is true")
+    boolean doNotCreateStream = false;
 
     @CommandLine.Option(names = "--stream-count")
     int streamCount = 1;
