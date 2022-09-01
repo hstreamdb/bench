@@ -280,7 +280,7 @@ public class WriteBench {
     @CommandLine.Option(names = "--rate-limit")
     int rateLimit = 100000;
 
-    @CommandLine.Option(names = "--ordering-keys")
+    @CommandLine.Option(names = "--partition-keys")
     int partitionKeys = 10000;
 
     @CommandLine.Option(names = "--total-bytes-limit")

@@ -125,7 +125,7 @@ public class WriteQpsBench {
           return;
         }
         rateLimiter.acquire();
-        String key = "test_" + random.nextInt(options.orderingKeys);
+        String key = "test_" + random.nextInt(options.partitionKeys);
         record.setPartitionKey(key);
         producer.write(record).join();
         successAppends.incrementAndGet();
@@ -142,7 +142,7 @@ public class WriteQpsBench {
           return;
         }
         rateLimiter.acquire();
-        String key = "test_" + random.nextInt(options.orderingKeys);
+        String key = "test_" + random.nextInt(options.partitionKeys);
         record.setPartitionKey(key);
         producer
             .write(record)
@@ -241,8 +241,8 @@ public class WriteQpsBench {
     @CommandLine.Option(names = "--rate-limit")
     int rateLimit = 100000;
 
-    @CommandLine.Option(names = "--ordering-keys")
-    int orderingKeys = 10;
+    @CommandLine.Option(names = "--partition-keys")
+    int partitionKeys = 10000;
 
     @CommandLine.Option(names = "--record-type")
     String payloadType = "raw";
