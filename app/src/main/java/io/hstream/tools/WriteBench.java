@@ -53,7 +53,8 @@ public class WriteBench {
     executorService = Executors.newFixedThreadPool(options.threadCount);
     RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
 
-    List<List<BufferedProducer>> producersPerThread = new ArrayList<>(options.threadCount);
+    var size = Math.min(options.threadCount, options.streamCount);
+    List<List<BufferedProducer>> producersPerThread = new ArrayList<>(size);
     for (int i = 0; i < options.threadCount; i++) {
       producersPerThread.add(new ArrayList<>());
     }
@@ -84,10 +85,10 @@ public class WriteBench {
               .compressionType(compresstionType)
               .flowControlSetting(flowControlSetting)
               .build();
-      producersPerThread.get(i % options.threadCount).add(bufferedProducer);
+      producersPerThread.get(i % size).add(bufferedProducer);
     }
 
-    for (int i = 0; i < options.threadCount; ++i) {
+    for (int i = 0; i < size; ++i) {
       int index = i;
       executorService.submit(() -> append(rateLimiter, producersPerThread.get(index), options));
     }
