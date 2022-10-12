@@ -1,6 +1,7 @@
 package io.hstream.tools;
 
 import com.google.common.util.concurrent.RateLimiter;
+import io.grpc.Status;
 import io.hstream.*;
 import io.hstream.Record;
 import java.util.ArrayList;
@@ -158,7 +159,12 @@ public class WriteReadBench {
                   return null;
                 }
                 if (throwable != null) {
-                  failedAppends.incrementAndGet();
+                  var status = Status.fromThrowable(throwable.getCause());
+                  if (status.getCode() == Status.UNAVAILABLE.getCode()) {
+                    failedAppends.incrementAndGet();
+                  } else {
+                    System.exit(1);
+                  }
                 } else {
                   successAppends.incrementAndGet();
                 }

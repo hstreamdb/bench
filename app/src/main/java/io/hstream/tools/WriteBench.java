@@ -1,13 +1,8 @@
 package io.hstream.tools;
 
 import com.google.common.util.concurrent.RateLimiter;
-import io.hstream.BatchSetting;
-import io.hstream.BufferedProducer;
-import io.hstream.FlowControlSetting;
-import io.hstream.HArray;
-import io.hstream.HRecord;
-import io.hstream.HStreamClient;
-import io.hstream.Record;
+import io.grpc.Status;
+import io.hstream.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -184,7 +179,12 @@ public class WriteBench {
                   }
 
                   if (throwable != null) {
-                    failedAppends.incrementAndGet();
+                    var status = Status.fromThrowable(throwable.getCause());
+                    if (status.getCode() == Status.UNAVAILABLE.getCode()) {
+                      failedAppends.incrementAndGet();
+                    } else {
+                      System.exit(1);
+                    }
                   } else {
                     successAppends.incrementAndGet();
                   }
