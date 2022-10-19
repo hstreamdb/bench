@@ -149,7 +149,7 @@ public class ReadBench {
                     .recordCountLimit(-1)
                     .build())
             .compressionType(compressionType)
-            .flowControlSetting(FlowControlSetting.newBuilder().bytesLimit(batchSize * 100).build())
+            .flowControlSetting(FlowControlSetting.newBuilder().bytesLimit(batchSize * 5).build())
             .build();
     Random random = new Random();
     byte[] payload = new byte[recordSize];
