@@ -1,33 +1,25 @@
 package io.hstream.tools;
 
-import com.google.common.util.concurrent.RateLimiter;
-import io.grpc.Status;
 import io.hstream.*;
 import java.util.ArrayList;
-import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
 
 public class TailBench {
-
   private static long lastFetchedCount = 0;
   private static final AtomicLong fetchedCount = new AtomicLong();
-
   private static long lastSuccessAppends;
   private static long lastFailedAppends;
-
   private static final AtomicLong successAppends = new AtomicLong();
   private static final AtomicLong failedAppends = new AtomicLong();
-
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
-  private static final AtomicBoolean terminateFlag = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
     var commandLine = new CommandLine(options).parseArgs(args);
-    System.out.println(options.toString());
+    System.out.println(options);
 
     if (options.helpRequested) {
       CommandLine.usage(options, System.out);
@@ -42,9 +34,6 @@ public class TailBench {
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
 
     var streams = new ArrayList<String>();
-    var threads = new ArrayList<Thread>();
-    var compresstionType = Utils.getCompressionType(options.compTp);
-    RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
     for (int i = 0; i < options.streamCnt; i++) {
       var streamName = options.streamNamePrefix + UUID.randomUUID();
       client.createStream(
@@ -53,35 +42,23 @@ public class TailBench {
           options.shardCount,
           options.streamBacklogDuration);
       streams.add(streamName);
-      BufferedProducer bufferedProducer =
-          client.newBufferedProducer().stream(streamName)
-              .batchSetting(
-                  BatchSetting.newBuilder()
-                      .bytesLimit(options.batchBytesLimit)
-                      .ageLimit(options.batchAgeLimit)
-                      .recordCountLimit(-1)
-                      .build())
-              .compressionType(compresstionType)
-              .flowControlSetting(
-                  FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build())
-              .build();
+    }
+    System.out.printf("Stream names: %s\n", streams);
 
-      var thread =
-          new Thread(
-              () ->
-                  write(bufferedProducer, rateLimiter, options.recordSize, options.partitionKeys));
-      threads.add(thread);
-    }
-    System.out.printf("Stream names: %s\n", streams.toString());
-    for (var thread : threads) {
-      thread.start();
-    }
+    var batchProducerService =
+        new BufferedProduceService(
+            client,
+            streams,
+            options.threadCount,
+            options.rateLimit,
+            options.batchProducerOpts,
+            options.payloadOpts);
 
-    var consumers = new ArrayList<Consumer>();
-    for (int i = 0; i < options.streamCnt; i++) {
-      System.out.println("create consummer " + i);
-      consumers.add(read(client, streams.get(i), options.actTimeout));
-    }
+    var consumeService =
+        new ConsumeService(client, streams, options.actTimeout, warmupDone, fetchedCount);
+
+    batchProducerService.startService(warmupDone, successAppends, failedAppends);
+    consumeService.startConsume();
 
     if (options.warm > 0) {
       System.out.println("Warmup ...... ");
@@ -98,6 +75,7 @@ public class TailBench {
       benchDurationMs = options.benchmarkDuration * 1000L;
     }
 
+    var recordSize = options.payloadOpts.recordSize;
     while (true) {
       Thread.sleep(options.reportIntervalSeconds * 1000L);
       long now = System.currentTimeMillis();
@@ -107,12 +85,7 @@ public class TailBench {
       double successPerSeconds = (double) (totalAppend - lastSuccessAppends) * 1000 / duration;
       double failurePerSeconds = (double) (totalFailedAppend - lastFailedAppends) * 1000 / duration;
       double throughput =
-          (double) (totalAppend - lastSuccessAppends)
-              * options.recordSize
-              * 1000
-              / duration
-              / 1024
-              / 1024;
+          (double) (totalAppend - lastSuccessAppends) * recordSize * 1000 / duration / 1024 / 1024;
 
       lastSuccessAppends = totalAppend;
       lastFailedAppends = totalFailedAppend;
@@ -120,7 +93,7 @@ public class TailBench {
       long currentFetchedCount = fetchedCount.get();
       double fetchThroughput =
           (double) (currentFetchedCount - lastFetchedCount)
-              * options.recordSize
+              * recordSize
               * 1000
               / duration
               / 1024
@@ -138,81 +111,14 @@ public class TailBench {
       if (benchDurationMs != Long.MAX_VALUE) {
         benchDurationMs -= duration;
         if (benchDurationMs <= 0) {
-          terminateFlag.set(true);
+          batchProducerService.stopProducer();
           break;
         }
       }
     }
 
-    for (var thread : threads) {
-      thread.join();
-    }
-
-    for (Consumer c : consumers) {
-      c.stopAsync().awaitTerminated();
-    }
-  }
-
-  static void write(
-      BufferedProducer bufferedProducer, RateLimiter rateLimiter, int recordSize, int keyCount) {
-    Random random = new Random();
-    byte[] payload = new byte[recordSize];
-    random.nextBytes(payload);
-    var records = Record.newBuilder().rawRecord(payload).build();
-    while (true) {
-      if (terminateFlag.get()) {
-        bufferedProducer.flush();
-        bufferedProducer.close();
-        return;
-      }
-
-      rateLimiter.acquire();
-      String key = "key-" + random.nextInt(keyCount);
-      records.setPartitionKey(key);
-      bufferedProducer
-          .write(records)
-          .handle(
-              (recordId, throwable) -> {
-                if (!warmupDone.get()) {
-                  return null;
-                }
-                if (throwable != null) {
-                  var status = Status.fromThrowable(throwable.getCause());
-                  if (status.getCode() == Status.UNAVAILABLE.getCode()) {
-                    failedAppends.incrementAndGet();
-                  } else {
-                    System.exit(1);
-                  }
-                } else {
-                  successAppends.incrementAndGet();
-                }
-                return null;
-              });
-    }
-  }
-
-  static Consumer read(HStreamClient client, String streamName, int timeout) {
-    var subscriptionId = UUID.randomUUID().toString();
-    client.createSubscription(
-        Subscription.newBuilder().stream(streamName)
-            .subscription(subscriptionId)
-            .ackTimeoutSeconds(timeout)
-            .offset(Subscription.SubscriptionOffset.EARLIEST)
-            .build());
-    Consumer consumer =
-        client
-            .newConsumer()
-            .subscription(subscriptionId)
-            .rawRecordReceiver(
-                (record, responder) -> {
-                  if (warmupDone.get()) {
-                    fetchedCount.incrementAndGet();
-                  }
-                  responder.ack();
-                })
-            .build();
-    consumer.startAsync().awaitRunning();
-    return consumer;
+    batchProducerService.stopService();
+    consumeService.stopConsume();
   }
 
   static class Options {
@@ -225,42 +131,32 @@ public class TailBench {
     @CommandLine.Option(names = "--service-url")
     String serviceUrl = "127.0.0.1:6570";
 
-    @CommandLine.Option(names = "--streams", description = "number of streams")
-    int streamCnt = 32;
-
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "read_bench_stream_";
 
-    @CommandLine.Option(names = "--stream-replication-factor")
-    short streamReplicationFactor = 1;
+    @CommandLine.Option(names = "--stream-count", description = "number of streams")
+    int streamCnt = 32;
 
     @CommandLine.Option(names = "--shard-count")
     int shardCount = 1;
 
+    @CommandLine.Option(names = "--stream-replication-factor")
+    short streamReplicationFactor = 1;
+
     @CommandLine.Option(names = "--stream-backlog-duration", description = "in seconds")
     int streamBacklogDuration = 3600;
 
-    @CommandLine.Option(names = "--record-size", description = "single record size in bytes")
-    int recordSize = 1024; // bytes
+    @CommandLine.Option(names = "--thread-count", description = "threads count use to write.")
+    int threadCount = streamCnt;
 
-    @CommandLine.Option(
-        names = "--rate-limit",
-        description = "total records append for all producers in a second")
+    @CommandLine.ArgGroup(exclusive = false)
+    Utils.BufferedProducerOpts batchProducerOpts = new Utils.BufferedProducerOpts();
+
+    @CommandLine.Option(names = "--rate-limit")
     int rateLimit = 100000;
 
-    @CommandLine.Option(names = "--partition-keys", description = "partition keys for each stream")
-    int partitionKeys = 10000;
-
-    @CommandLine.Option(names = "--batch-age-limit", description = "in ms")
-    int batchAgeLimit = -1; // ms
-
-    @CommandLine.Option(
-        names = "--batch-bytes-limit",
-        description = "total bytes of a single batch")
-    int batchBytesLimit = 204800; // bytes
-
-    @CommandLine.Option(names = "--total-bytes-limit")
-    int totalBytesLimit = batchBytesLimit * 5;
+    @CommandLine.ArgGroup(exclusive = false)
+    Utils.PayloadOpts payloadOpts = new Utils.PayloadOpts();
 
     @CommandLine.Option(names = "--ack-timeout", description = "in seconds")
     int actTimeout = 60;
@@ -276,7 +172,42 @@ public class TailBench {
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 60; // seconds
 
-    @CommandLine.Option(names = "--compression", description = "Enum values: [none|gzip]")
-    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.none;
+    @Override
+    public String toString() {
+      return "Options{"
+          + "helpRequested="
+          + helpRequested
+          + ", serviceUrl='"
+          + serviceUrl
+          + '\''
+          + ", streamNamePrefix='"
+          + streamNamePrefix
+          + '\''
+          + ", streamCnt="
+          + streamCnt
+          + ", shardCount="
+          + shardCount
+          + ", streamReplicationFactor="
+          + streamReplicationFactor
+          + ", streamBacklogDuration="
+          + streamBacklogDuration
+          + ", threadCount="
+          + threadCount
+          + ", batchProducerOpts="
+          + batchProducerOpts
+          + ", rateLimit="
+          + rateLimit
+          + ", payloadOpts="
+          + payloadOpts
+          + ", actTimeout="
+          + actTimeout
+          + ", reportIntervalSeconds="
+          + reportIntervalSeconds
+          + ", benchmarkDuration="
+          + benchmarkDuration
+          + ", warm="
+          + warm
+          + '}';
+    }
   }
 }
