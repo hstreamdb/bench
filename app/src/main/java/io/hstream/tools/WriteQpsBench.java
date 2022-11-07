@@ -16,13 +16,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
 
 public class WriteQpsBench {
-
-  private static ExecutorService executorService;
-
-  private static long lastReportTs;
-  private static long lastSuccessAppends;
-  private static long lastFailedAppends;
-
   private static final AtomicLong successAppends = new AtomicLong();
   private static final AtomicLong failedAppends = new AtomicLong();
   private static final AtomicBoolean terminateFlag = new AtomicBoolean(false);
@@ -47,7 +40,7 @@ public class WriteQpsBench {
 
     // removeAllStreams(client);
 
-    executorService = Executors.newFixedThreadPool(options.threadCount);
+    ExecutorService executorService = Executors.newFixedThreadPool(options.threadCount);
     RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
 
     var size = Math.min(options.threadCount, options.streamCount);
@@ -78,9 +71,9 @@ public class WriteQpsBench {
       warmupDone.set(true);
     }
 
-    lastReportTs = System.currentTimeMillis();
-    lastSuccessAppends = 0;
-    lastFailedAppends = 0;
+    long lastReportTs = System.currentTimeMillis();
+    long lastSuccessAppends = 0;
+    long lastFailedAppends = 0;
 
     long benchDurationMs;
     if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
@@ -118,26 +111,9 @@ public class WriteQpsBench {
     executorService.awaitTermination(15, TimeUnit.SECONDS);
   }
 
-  public static void append1(RateLimiter rateLimiter, List<Producer> producers, Options options) {
-    Random random = new Random();
-    Record record = makeRecord(options);
-    while (true) {
-      for (var producer : producers) {
-        if (terminateFlag.get()) {
-          return;
-        }
-        rateLimiter.acquire();
-        String key = "test_" + random.nextInt(options.partitionKeys);
-        record.setPartitionKey(key);
-        producer.write(record).join();
-        successAppends.incrementAndGet();
-      }
-    }
-  }
-
   public static void append(RateLimiter rateLimiter, List<Producer> producers, Options options) {
     Random random = new Random();
-    Record record = makeRecord(options);
+    Record record = Utils.makeRecord(options.payloadType, options.recordSize);
     while (true) {
       for (var producer : producers) {
         if (terminateFlag.get()) {
@@ -175,32 +151,6 @@ public class WriteQpsBench {
         }
       }
     }
-  }
-
-  static Record makeRecord(Options options) {
-    if (options.payloadType.equals("raw")) {
-      return makeRawRecord(options);
-    }
-    return makeHRecord(options);
-  }
-
-  static Record makeRawRecord(Options options) {
-    Random random = new Random();
-    byte[] payload = new byte[options.recordSize];
-    random.nextBytes(payload);
-    return Record.newBuilder().rawRecord(payload).build();
-  }
-
-  static Record makeHRecord(Options options) {
-    int paddingSize = options.recordSize > 96 ? options.recordSize - 96 : 0;
-    HRecord hRecord =
-        HRecord.newBuilder()
-            .put("int", 10)
-            .put("boolean", true)
-            .put("array", HArray.newBuilder().add(1).add(2).add(3).build())
-            .put("string", "h".repeat(paddingSize))
-            .build();
-    return Record.newBuilder().hRecord(hRecord).build();
   }
 
   static void removeAllStreams(HStreamClient client) {
@@ -252,7 +202,7 @@ public class WriteQpsBench {
     int partitionKeys = 10000;
 
     @CommandLine.Option(names = "--record-type")
-    String payloadType = "raw";
+    Utils.PayloadType payloadType = Utils.PayloadType.raw;
 
     @CommandLine.Option(
         names = "--bench-time",

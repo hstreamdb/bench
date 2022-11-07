@@ -1,30 +1,15 @@
 package io.hstream.tools;
 
-import com.google.common.util.concurrent.RateLimiter;
-import io.grpc.Status;
 import io.hstream.*;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
 
 public class WriteBench {
-
-  private static ExecutorService executorService;
-
-  private static long lastReportTs;
-  private static long lastReadSuccessAppends;
-  private static long lastReadFailedAppends;
-
   private static final AtomicLong successAppends = new AtomicLong();
   private static final AtomicLong failedAppends = new AtomicLong();
-  private static final AtomicBoolean terminateFlag = new AtomicBoolean(false);
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
@@ -43,17 +28,8 @@ public class WriteBench {
     }
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
-    var compresstionType = Utils.getCompressionType(options.compTp);
 
-    executorService = Executors.newFixedThreadPool(options.threadCount);
-    RateLimiter rateLimiter = RateLimiter.create(options.rateLimit);
-
-    var size = Math.min(options.threadCount, options.streamCount);
-    List<List<BufferedProducer>> producersPerThread = new ArrayList<>(size);
-    for (int i = 0; i < options.threadCount; i++) {
-      producersPerThread.add(new ArrayList<>());
-    }
-
+    var streams = new ArrayList<String>(options.streamCount);
     for (int i = 0; i < options.streamCount; i++) {
       var streamName = options.streamNamePrefix + i;
       if (!options.fixedStreamName) {
@@ -66,27 +42,18 @@ public class WriteBench {
             options.shardCount,
             options.streamBacklogDuration);
       }
-      var batchSetting =
-          BatchSetting.newBuilder()
-              .bytesLimit(options.batchBytesLimit)
-              .ageLimit(options.batchAgeLimit)
-              .recordCountLimit(-1)
-              .build();
-      var flowControlSetting =
-          FlowControlSetting.newBuilder().bytesLimit(options.totalBytesLimit).build();
-      var bufferedProducer =
-          client.newBufferedProducer().stream(streamName)
-              .batchSetting(batchSetting)
-              .compressionType(compresstionType)
-              .flowControlSetting(flowControlSetting)
-              .build();
-      producersPerThread.get(i % size).add(bufferedProducer);
+      streams.add(streamName);
     }
 
-    for (int i = 0; i < size; ++i) {
-      int index = i;
-      executorService.submit(() -> append(rateLimiter, producersPerThread.get(index), options));
-    }
+    var batchProducerService =
+        new BufferedProduceService(
+            client,
+            streams,
+            options.threadCount,
+            options.rateLimit,
+            options.batchProducerOpts,
+            options.payloadOpts);
+    batchProducerService.startService(warmupDone, successAppends, failedAppends);
 
     if (options.warm > 0) {
       System.out.println("Warmup ...... ");
@@ -94,9 +61,9 @@ public class WriteBench {
       warmupDone.set(true);
     }
 
-    lastReportTs = System.currentTimeMillis();
-    lastReadSuccessAppends = 0;
-    lastReadFailedAppends = 0;
+    long lastReportTs = System.currentTimeMillis();
+    long lastReadSuccessAppends = 0;
+    long lastReadFailedAppends = 0;
     long benchDurationMs;
     if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
       benchDurationMs = Long.MAX_VALUE;
@@ -105,6 +72,7 @@ public class WriteBench {
     }
 
     long totalStartTime = System.currentTimeMillis();
+    var recordSize = options.payloadOpts.recordSize;
     while (true) {
       Thread.sleep(options.reportIntervalSeconds * 1000L);
       long now = System.currentTimeMillis();
@@ -115,7 +83,7 @@ public class WriteBench {
       double failurePerSeconds = (double) (failedRead - lastReadFailedAppends) * 1000 / duration;
       double throughput =
           (double) (successRead - lastReadSuccessAppends)
-              * options.recordSize
+              * recordSize
               * 1000
               / duration
               / 1024
@@ -131,7 +99,7 @@ public class WriteBench {
               successPerSeconds, failurePerSeconds, throughput));
       benchDurationMs -= duration;
       if (benchDurationMs <= 0) {
-        terminateFlag.set(true);
+        batchProducerService.stopProducer();
         break;
       }
     }
@@ -139,87 +107,9 @@ public class WriteBench {
     long totalEndTime = System.currentTimeMillis();
     long totalSuccess = successAppends.get();
     double totalAvgThroughput =
-        (double) totalSuccess
-            * options.recordSize
-            * 1000
-            / (totalEndTime - totalStartTime)
-            / 1024
-            / 1024;
+        (double) totalSuccess * recordSize * 1000 / (totalEndTime - totalStartTime) / 1024 / 1024;
     System.out.println(String.format("TotalAvgThroughput: %.2f MB/s", totalAvgThroughput));
-
-    executorService.shutdown();
-    executorService.awaitTermination(15, TimeUnit.SECONDS);
-  }
-
-  private static void stopAllBufferedProducers(List<BufferedProducer> producers) {
-    for (var producer : producers) {
-      producer.close();
-    }
-  }
-
-  public static void append(
-      RateLimiter rateLimiter, List<BufferedProducer> producers, Options options) {
-    Random random = new Random();
-    Record record = makeRecord(options);
-    while (true) {
-      for (var producer : producers) {
-        if (terminateFlag.get()) {
-          stopAllBufferedProducers(producers);
-          return;
-        }
-        rateLimiter.acquire();
-        String key = "test_" + random.nextInt(options.partitionKeys);
-        record.setPartitionKey(key);
-        producer
-            .write(record)
-            .handle(
-                (recordId, throwable) -> {
-                  if (!warmupDone.get()) {
-                    return null;
-                  }
-
-                  if (throwable != null) {
-                    var status = Status.fromThrowable(throwable.getCause());
-                    if (status.getCode() == Status.UNAVAILABLE.getCode()) {
-                      failedAppends.incrementAndGet();
-                    } else {
-                      System.exit(1);
-                    }
-                  } else {
-                    successAppends.incrementAndGet();
-                  }
-                  return null;
-                });
-      }
-
-      // Thread.yield();
-    }
-  }
-
-  static Record makeRecord(Options options) {
-    if (options.payloadType.equals("raw")) {
-      return makeRawRecord(options);
-    }
-    return makeHRecord(options);
-  }
-
-  static Record makeRawRecord(Options options) {
-    Random random = new Random();
-    byte[] payload = new byte[options.recordSize];
-    random.nextBytes(payload);
-    return Record.newBuilder().rawRecord(payload).build();
-  }
-
-  static Record makeHRecord(Options options) {
-    int paddingSize = options.recordSize > 96 ? options.recordSize - 96 : 0;
-    HRecord hRecord =
-        HRecord.newBuilder()
-            .put("int", 10)
-            .put("boolean", true)
-            .put("array", HArray.newBuilder().add(1).add(2).add(3).build())
-            .put("string", "h".repeat(paddingSize))
-            .build();
-    return Record.newBuilder().hRecord(hRecord).build();
+    batchProducerService.stopService();
   }
 
   static void removeAllStreams(HStreamClient client) {
@@ -243,20 +133,17 @@ public class WriteBench {
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "write_bench_stream_";
 
+    @CommandLine.Option(names = "--stream-count")
+    int streamCount = 1;
+
+    @CommandLine.Option(names = "--shard-count")
+    int shardCount = 1;
+
     @CommandLine.Option(names = "--stream-replication-factor")
     short streamReplicationFactor = 1;
 
     @CommandLine.Option(names = "--stream-backlog-duration", description = "in seconds")
     int streamBacklogDuration = 60 * 30;
-
-    @CommandLine.Option(names = "--record-size", description = "in bytes")
-    int recordSize = 1024; // bytes
-
-    @CommandLine.Option(names = "--batch-age-limit", description = "in ms")
-    int batchAgeLimit = 10; // ms
-
-    @CommandLine.Option(names = "--batch-bytes-limit", description = "in bytes")
-    int batchBytesLimit = 1024 * 1024; // bytes
 
     @CommandLine.Option(names = "--fixed-stream-name")
     boolean fixedStreamName = false;
@@ -266,29 +153,20 @@ public class WriteBench {
         description = "only meaningful if fixedStreamName is true")
     boolean doNotCreateStream = false;
 
-    @CommandLine.Option(names = "--stream-count")
-    int streamCount = 1;
+    @CommandLine.Option(names = "--thread-count", description = "threads count use to write.")
+    int threadCount = streamCount;
 
-    @CommandLine.Option(names = "--shard-count")
-    int shardCount = 1;
-
-    @CommandLine.Option(names = "--thread-count")
-    int threadCount = 1;
-
-    @CommandLine.Option(names = "--report-interval", description = "in seconds")
-    int reportIntervalSeconds = 3;
+    @CommandLine.ArgGroup(exclusive = false)
+    Utils.BufferedProducerOpts batchProducerOpts = new Utils.BufferedProducerOpts();
 
     @CommandLine.Option(names = "--rate-limit")
     int rateLimit = 100000;
 
-    @CommandLine.Option(names = "--partition-keys")
-    int partitionKeys = 10000;
+    @CommandLine.ArgGroup(exclusive = false)
+    Utils.PayloadOpts payloadOpts = new Utils.PayloadOpts();
 
-    @CommandLine.Option(names = "--total-bytes-limit")
-    int totalBytesLimit = batchBytesLimit * shardCount * 5;
-
-    @CommandLine.Option(names = "--record-type")
-    String payloadType = "raw";
+    @CommandLine.Option(names = "--report-interval", description = "in seconds")
+    int reportIntervalSeconds = 3;
 
     @CommandLine.Option(
         names = "--bench-time",
@@ -298,7 +176,44 @@ public class WriteBench {
     @CommandLine.Option(names = "--warmup", description = "in seconds")
     long warm = 1; // seconds
 
-    @CommandLine.Option(names = "--compression", description = "Enum values: [none|gzip|zstd]")
-    Utils.CompressionAlgo compTp = Utils.CompressionAlgo.none;
+    @Override
+    public String toString() {
+      return "Options{"
+          + "helpRequested="
+          + helpRequested
+          + ", serviceUrl='"
+          + serviceUrl
+          + '\''
+          + ", streamNamePrefix='"
+          + streamNamePrefix
+          + '\''
+          + ", streamCount="
+          + streamCount
+          + ", shardCount="
+          + shardCount
+          + ", threadCount="
+          + threadCount
+          + ", streamReplicationFactor="
+          + streamReplicationFactor
+          + ", streamBacklogDuration="
+          + streamBacklogDuration
+          + ", fixedStreamName="
+          + fixedStreamName
+          + ", doNotCreateStream="
+          + doNotCreateStream
+          + ", batchProducerOpts="
+          + batchProducerOpts
+          + ", payloadOpts="
+          + payloadOpts
+          + ", reportIntervalSeconds="
+          + reportIntervalSeconds
+          + ", rateLimit="
+          + rateLimit
+          + ", benchmarkDuration="
+          + benchmarkDuration
+          + ", warm="
+          + warm
+          + '}';
+    }
   }
 }
