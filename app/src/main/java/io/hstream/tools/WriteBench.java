@@ -1,10 +1,11 @@
 package io.hstream.tools;
 
 import io.hstream.*;
-import java.util.ArrayList;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
+import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine;
 
 public class WriteBench {
@@ -29,21 +30,7 @@ public class WriteBench {
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
 
-    var streams = new ArrayList<String>(options.streamCount);
-    for (int i = 0; i < options.streamCount; i++) {
-      var streamName = options.streamNamePrefix + i;
-      if (!options.fixedStreamName) {
-        streamName += UUID.randomUUID();
-      }
-      if (!options.doNotCreateStream) {
-        client.createStream(
-            streamName,
-            options.streamReplicationFactor,
-            options.shardCount,
-            options.streamBacklogDuration);
-      }
-      streams.add(streamName);
-    }
+    ArrayList<String> streams = createStreamsConcurrently(options, client);
 
     var batchProducerService =
         new BufferedProduceService(
@@ -110,6 +97,50 @@ public class WriteBench {
         (double) totalSuccess * recordSize * 1000 / (totalEndTime - totalStartTime) / 1024 / 1024;
     System.out.println(String.format("TotalAvgThroughput: %.2f MB/s", totalAvgThroughput));
     batchProducerService.stopService();
+  }
+
+  @NotNull
+  private static ArrayList<String> createStreamsConcurrently(Options options, HStreamClient client)
+      throws InterruptedException {
+    var concurrency = Math.min(options.streamCount, options.threadCount);
+    List<List<String>> streamsPerThread = new ArrayList<>(concurrency);
+    for (int i = 0; i < concurrency; i++) {
+      streamsPerThread.add(new ArrayList<>());
+    }
+    for (int i = 0; i < options.streamCount; i++) {
+      var streamName = options.streamNamePrefix + i;
+      if (!options.fixedStreamName) {
+        streamName += UUID.randomUUID();
+      }
+      streamsPerThread.get(i % concurrency).add(streamName);
+    }
+
+    var start = System.currentTimeMillis();
+    if (!options.doNotCreateStream) {
+      List<Thread> threads = new ArrayList<>(concurrency);
+      for (var streamNames : streamsPerThread) {
+        var thread =
+            new Thread(
+                () -> {
+                  for (var streamName : streamNames) {
+                    client.createStream(
+                        streamName,
+                        options.streamReplicationFactor,
+                        options.shardCount,
+                        options.streamBacklogDuration);
+                  }
+                });
+        thread.start();
+        threads.add(thread);
+      }
+      for (var t : threads) {
+        t.join();
+      }
+    }
+    var end = System.currentTimeMillis();
+    System.out.printf("total time used by create stream: %fs\n", (double) (end - start) / 1000);
+    return (ArrayList<String>)
+        streamsPerThread.stream().flatMap(Collection::stream).collect(Collectors.toList());
   }
 
   static void removeAllStreams(HStreamClient client) {
