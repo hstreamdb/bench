@@ -1,7 +1,11 @@
 package io.hstream.tools;
 
 import io.hstream.HStreamClient;
+import java.io.*;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import picocli.CommandLine;
@@ -27,32 +31,39 @@ public class ReadBench {
 
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
 
-    var streams = new ArrayList<String>();
-    for (int i = 0; i < options.streamCnt; i++) {
-      var streamName = options.streamNamePrefix + i;
-      client.createStream(
-          streamName,
-          options.streamReplicationFactor,
-          options.shardCount,
-          options.streamBacklogDuration);
-      streams.add(streamName);
+    if (options.dataGenerate) {
+      var streams = new ArrayList<String>();
+      for (int i = 0; i < options.streamCnt; i++) {
+        var streamName = options.streamNamePrefix + i + UUID.randomUUID();
+        client.createStream(
+            streamName,
+            options.streamReplicationFactor,
+            options.shardCount,
+            options.streamBacklogDuration);
+        streams.add(streamName);
+      }
+
+      var batchProducerService =
+          new BufferedProduceService(
+              client,
+              streams,
+              options.threadCount,
+              options.rateLimit,
+              options.batchProducerOpts,
+              options.payloadOpts);
+      System.out.println("Start write data to hstream.");
+      batchProducerService.writeNBytes(options.totalWriteSize);
+
+      System.out.println("wrote done");
+      String path = "src/main/resources/streams.text";
+      persistentStreamInfo(path, streams);
+      // Sleep for a period of time to allow the node's CPU and memory metrics to reset
+      // to facilitate getting the correct monitoring data
+      Thread.sleep(10000L);
     }
 
-    var batchProducerService =
-        new BufferedProduceService(
-            client,
-            streams,
-            options.threadCount,
-            options.rateLimit,
-            options.batchProducerOpts,
-            options.payloadOpts);
-    System.out.println("Start write data to hstream.");
-    batchProducerService.writeNBytes(options.totalWriteSize);
-
-    System.out.println("wrote done");
-    // Sleep for a period of time to allow the node's CPU and memory metrics to reset
-    // to facilitate getting the correct monitoring data
-    Thread.sleep(10000L);
+    var streams = readStreams(options.path);
+    System.out.printf("read from streams : %s\n", String.join(",", streams));
 
     var consumeService =
         new ConsumeService(client, streams, options.actTimeout, warmupDone, successReads);
@@ -102,6 +113,25 @@ public class ReadBench {
     consumeService.stopConsume();
   }
 
+  private static List<String> readStreams(String file) throws FileNotFoundException {
+    var streamNames = new ArrayList<String>();
+    Scanner s = new Scanner(new FileReader(file));
+    while (s.hasNext()) {
+      streamNames.add(s.nextLine());
+    }
+    return streamNames;
+  }
+
+  private static void persistentStreamInfo(String fileName, List<String> streamNames)
+      throws IOException {
+    BufferedWriter writer = new BufferedWriter(new FileWriter(fileName));
+    for (var stream : streamNames) {
+      writer.write(stream);
+      writer.write("\n");
+    }
+    writer.close();
+  }
+
   static class Options {
     @CommandLine.Option(
         names = {"-h", "--help"},
@@ -111,6 +141,17 @@ public class ReadBench {
 
     @CommandLine.Option(names = "--service-url")
     String serviceUrl = "127.0.0.1:6570";
+
+    @CommandLine.Option(
+        names = "--data-generate",
+        description = "write data to store first, then consume produced data.")
+    boolean dataGenerate = false;
+
+    @CommandLine.Option(
+        names = "streams",
+        description =
+            "The path to the file containing the names of all streams to be subscribed to, one stream per line")
+    String path = "src/main/resources/streams.text";
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "read_bench_stream_";
@@ -163,6 +204,11 @@ public class ReadBench {
           + helpRequested
           + ", serviceUrl='"
           + serviceUrl
+          + '\''
+          + ", dataGenerate="
+          + dataGenerate
+          + ", path='"
+          + path
           + '\''
           + ", streamNamePrefix='"
           + streamNamePrefix
