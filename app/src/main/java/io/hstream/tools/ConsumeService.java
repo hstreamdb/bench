@@ -43,7 +43,7 @@ public class ConsumeService {
       int ackTimeout,
       AtomicBoolean warmupDone,
       AtomicLong successReads) {
-    var subscriptionId = UUID.randomUUID().toString();
+    var subscriptionId = "sub_" + UUID.randomUUID();
     client.createSubscription(
         Subscription.newBuilder().stream(streamName)
             .subscription(subscriptionId)
