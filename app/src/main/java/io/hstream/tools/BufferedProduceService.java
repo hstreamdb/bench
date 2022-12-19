@@ -113,7 +113,9 @@ public class BufferedProduceService {
 
                   if (throwable != null) {
                     var status = Status.fromThrowable(throwable.getCause());
-                    if (status.getCode() == Status.UNAVAILABLE.getCode()) {
+                    var errorCode = status.getCode();
+                    if (errorCode == Status.UNAVAILABLE.getCode()
+                        || errorCode == Status.DEADLINE_EXCEEDED.getCode()) {
                       failedAppends.incrementAndGet();
                     } else {
                       System.exit(1);
