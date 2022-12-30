@@ -28,4 +28,5 @@ jobs:
         run: |
           ./gradlew spotlessJavaCheck
           ./gradlew spotlessGroovyGradleCheck
+
       - run: ./gradlew build --refresh-dependencies

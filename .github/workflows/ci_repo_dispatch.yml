@@ -29,12 +29,12 @@ jobs:
       - name: Waiting hserver
         run: ./wait_hserver.sh || ( docker-compose logs hserver0 && exit 1 )
 
-      - name: Run bench
+      - name: Run write bench
         run: |
           ./gradlew writeBench --args="\
               --bench-time=60 \
               --warmup=10 \
-              --service-url=127.0.0.1:6570 \
+              --service-url=hstream://127.0.0.1:6570 \
               --thread-count=2 \
               --stream-count=10 \
               --partition-keys=2 \
