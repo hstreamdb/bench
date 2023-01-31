@@ -60,7 +60,7 @@ public class TailBench {
     batchProducerService.startService(warmupDone, successAppends, failedAppends);
     consumeService.startConsume();
 
-    if (options.warm > 0) {
+    if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);
