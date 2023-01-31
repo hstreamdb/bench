@@ -65,7 +65,7 @@ public class WriteQpsBench {
       executorService.submit(() -> append(rateLimiter, producersPerThread.get(index), options));
     }
 
-    if (options.warm > 0) {
+    if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);

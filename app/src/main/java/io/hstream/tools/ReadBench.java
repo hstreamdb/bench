@@ -69,7 +69,7 @@ public class ReadBench {
         new ConsumeService(client, streams, options.actTimeout, warmupDone, successReads);
     consumeService.startConsume();
 
-    if (options.warm > 0) {
+    if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);

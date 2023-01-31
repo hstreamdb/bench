@@ -42,7 +42,7 @@ public class WriteBench {
             options.payloadOpts);
     batchProducerService.startService(warmupDone, successAppends, failedAppends);
 
-    if (options.warm > 0) {
+    if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);
