@@ -102,6 +102,7 @@ public class Utils {
         .batchSetting(batchSetting)
         .compressionType(cmpType)
         .flowControlSetting(flowControlSetting)
+        .requestTimeoutMs(100)
         .build();
   }
 
