@@ -142,13 +142,13 @@ public class WriteQpsBench {
                   }
                   return null;
                 });
-        if (!warmupDone.get()) {
-          try {
-            Thread.sleep(5);
-          } catch (Exception e) {
-            e.printStackTrace();
-          }
-        }
+        //        if (!warmupDone.get()) {
+        //          try {
+        //            Thread.sleep(5);
+        //          } catch (Exception e) {
+        //            e.printStackTrace();
+        //          }
+        //        }
       }
     }
   }
