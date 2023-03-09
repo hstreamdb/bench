@@ -1,10 +1,13 @@
 package io.hstream.tools;
 
+import static io.hstream.tools.Utils.persistentStreamInfo;
+
 import io.hstream.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.util.Strings;
 import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine;
 
@@ -31,6 +34,9 @@ public class WriteBench {
     HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
 
     ArrayList<String> streams = createStreamsConcurrently(options, client);
+    if (!Objects.equals(options.path, Strings.EMPTY)) {
+      persistentStreamInfo(options.path, streams);
+    }
 
     var batchProducerService =
         new BufferedProduceService(
@@ -183,6 +189,11 @@ public class WriteBench {
         names = "--not-create-stream",
         description = "only meaningful if fixedStreamName is true")
     boolean doNotCreateStream = false;
+
+    @CommandLine.Option(
+        names = "--persistent-stream-path",
+        description = "file path to persistent stream name.")
+    String path = "";
 
     @CommandLine.Option(names = "--thread-count", description = "threads count use to write.")
     int threadCount = streamCount;

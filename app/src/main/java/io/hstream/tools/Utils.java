@@ -1,10 +1,24 @@
 package io.hstream.tools;
 
 import io.hstream.*;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.List;
 import java.util.Random;
 import picocli.CommandLine;
 
 public class Utils {
+  public static void persistentStreamInfo(String fileName, List<String> streamNames)
+      throws IOException {
+    BufferedWriter writer = new BufferedWriter(new FileWriter(fileName));
+    for (var stream : streamNames) {
+      writer.write(stream);
+      writer.write("\n");
+    }
+    writer.close();
+  }
+
   public enum CompressionAlgo {
     none,
     gzip,
