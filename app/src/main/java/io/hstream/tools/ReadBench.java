@@ -56,7 +56,7 @@ public class ReadBench {
 
       System.out.println("wrote done");
       String path = "src/main/resources/streams.text";
-      persistentStreamInfo(path, streams);
+      Utils.persistentStreamInfo(path, streams);
       // Sleep for a period of time to allow the node's CPU and memory metrics to reset
       // to facilitate getting the correct monitoring data
       Thread.sleep(10000L);
@@ -120,16 +120,6 @@ public class ReadBench {
       streamNames.add(s.nextLine());
     }
     return streamNames;
-  }
-
-  private static void persistentStreamInfo(String fileName, List<String> streamNames)
-      throws IOException {
-    BufferedWriter writer = new BufferedWriter(new FileWriter(fileName));
-    for (var stream : streamNames) {
-      writer.write(stream);
-      writer.write("\n");
-    }
-    writer.close();
   }
 
   static class Options {
