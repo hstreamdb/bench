@@ -1,20 +1,20 @@
 package io.hstream.tools;
 
 import io.hstream.*;
+import io.hstream.tools.Stats.PeriodStats;
+import io.hstream.tools.Stats.Stats;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
+import org.HdrHistogram.Histogram;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 public class TailBench {
-  private static long lastFetchedCount = 0;
-  private static final AtomicLong fetchedCount = new AtomicLong();
-  private static long lastSuccessAppends;
-  private static long lastFailedAppends;
-  private static final AtomicLong successAppends = new AtomicLong();
-  private static final AtomicLong failedAppends = new AtomicLong();
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
+  private static final Logger log = LoggerFactory.getLogger(WriteBench.class);
+  private static final Stats stats = new Stats();
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -55,9 +55,10 @@ public class TailBench {
             options.payloadOpts);
 
     var consumeService =
-        new ConsumeService(client, streams, options.actTimeout, warmupDone, fetchedCount);
+        new ConsumeService(
+            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize);
 
-    batchProducerService.startService(warmupDone, successAppends, failedAppends);
+    batchProducerService.startService(warmupDone, stats);
     consumeService.startConsume();
 
     if (options.warm >= 0) {
@@ -66,8 +67,6 @@ public class TailBench {
       warmupDone.set(true);
     }
 
-    long lastReportTs = System.currentTimeMillis();
-
     long benchDurationMs;
     if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
       benchDurationMs = Long.MAX_VALUE;
@@ -75,50 +74,70 @@ public class TailBench {
       benchDurationMs = options.benchmarkDuration * 1000L;
     }
 
-    var recordSize = options.payloadOpts.recordSize;
+    printStats(options.reportIntervalSeconds, benchDurationMs);
+    batchProducerService.stopProducer();
+    batchProducerService.stopService();
+    consumeService.stopConsume();
+  }
+
+  private static void printStats(int reportIntervalSeconds, long benchDurationMs) {
+    long statTime = System.nanoTime();
+    long oldTime = System.nanoTime();
+
     while (true) {
-      Thread.sleep(options.reportIntervalSeconds * 1000L);
-      long now = System.currentTimeMillis();
-      long totalAppend = successAppends.get();
-      long totalFailedAppend = failedAppends.get();
-      long duration = now - lastReportTs;
-      double successPerSeconds = (double) (totalAppend - lastSuccessAppends) * 1000 / duration;
-      double failurePerSeconds = (double) (totalFailedAppend - lastFailedAppends) * 1000 / duration;
-      double throughput =
-          (double) (totalAppend - lastSuccessAppends) * recordSize * 1000 / duration / 1024 / 1024;
+      try {
+        Thread.sleep(reportIntervalSeconds * 1000L);
+      } catch (InterruptedException e) {
+        break;
+      }
 
-      lastSuccessAppends = totalAppend;
-      lastFailedAppends = totalFailedAppend;
+      PeriodStats periodStat = stats.getPeriodStats();
+      long now = System.nanoTime();
+      double elapsed = (now - oldTime) / 1e9;
+      double publishRate = periodStat.messagesSent / elapsed;
+      double publishThroughput = periodStat.bytesSent / elapsed / 1024 / 1024;
+      double consumeRate = periodStat.messagesReceived / elapsed;
+      double consumeThroughput = periodStat.bytesReceived / elapsed / 1024 / 1024;
 
-      long currentFetchedCount = fetchedCount.get();
-      double fetchThroughput =
-          (double) (currentFetchedCount - lastFetchedCount)
-              * recordSize
-              * 1000
-              / duration
-              / 1024
-              / 1024;
-      lastFetchedCount = currentFetchedCount;
+      long backlog = Math.max(0L, periodStat.totalMessagesSent - periodStat.totalMessagesReceived);
 
-      lastReportTs = now;
-
-      System.out.printf(
+      log.info(
           String.format(
-              "[Append]: success %f record/s, failed %f record/s, throughput %f MB/s%n",
-              successPerSeconds, failurePerSeconds, throughput));
-      System.out.printf(String.format("[Fetch]: throughput %f MB/s%n", fetchThroughput));
+              "Pub rate %.2f msg/s / %.2f MB/s | Consume rate %.2f msg/s %.2f MB/s | Backlog %.2f K "
+                  + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p99: %.2f - p99.9: %.2f - Max: %.2f",
+              publishRate,
+              publishThroughput,
+              consumeRate,
+              consumeThroughput,
+              backlog / 1000.0,
+              Utils.getLatencyInMs(periodStat.endToEndLatency.getMean()),
+              Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(50)),
+              Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99)),
+              Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99.9)),
+              Utils.getLatencyInMs(periodStat.endToEndLatency.getMaxValueAsDouble())));
 
-      if (benchDurationMs != Long.MAX_VALUE) {
-        benchDurationMs -= duration;
-        if (benchDurationMs <= 0) {
-          batchProducerService.stopProducer();
-          break;
-        }
+      oldTime = now;
+      if (benchDurationMs <= 0) {
+        break;
       }
     }
 
-    batchProducerService.stopService();
-    consumeService.stopConsume();
+    long endTime = System.nanoTime();
+    double elapsed = (endTime - statTime) / 1e9;
+    double publishRate = stats.totalMessagesSent.sum() / elapsed;
+    double publishThroughput = stats.totalBytesSent.sum() / elapsed / 1024 / 1024;
+    double consumeRate = stats.totalMessagesReceived.sum() / elapsed;
+    double consumeThroughput = stats.totalBytesReceived.sum() / elapsed / 1024 / 1024;
+    Histogram latency = stats.endToEndLatencyRecorder.getIntervalHistogram();
+    log.info(
+        String.format(
+            "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Consume rate %.2f msg/s %.2f MB/s | E2E Latency (ms) avg: %.2f - Max: %.2f",
+            publishRate,
+            publishThroughput,
+            consumeRate,
+            consumeThroughput,
+            Utils.getLatencyInMs(latency.getMean()),
+            Utils.getLatencyInMs(latency.getMaxValueAsDouble())));
   }
 
   static class Options {

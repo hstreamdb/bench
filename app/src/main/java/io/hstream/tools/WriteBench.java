@@ -3,18 +3,23 @@ package io.hstream.tools;
 import static io.hstream.tools.Utils.persistentStreamInfo;
 
 import io.hstream.*;
+import io.hstream.tools.Stats.PeriodStats;
+import io.hstream.tools.Stats.Stats;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import org.HdrHistogram.Histogram;
 import org.apache.logging.log4j.util.Strings;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 public class WriteBench {
-  private static final AtomicLong successAppends = new AtomicLong();
-  private static final AtomicLong failedAppends = new AtomicLong();
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
+  private static final Logger log = LoggerFactory.getLogger(WriteBench.class);
+  private static final Stats stats = new Stats();
+  private static BufferedProduceService batchProducerService;
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -38,7 +43,7 @@ public class WriteBench {
       persistentStreamInfo(options.path, streams);
     }
 
-    var batchProducerService =
+    batchProducerService =
         new BufferedProduceService(
             client,
             streams,
@@ -46,7 +51,7 @@ public class WriteBench {
             options.rateLimit,
             options.batchProducerOpts,
             options.payloadOpts);
-    batchProducerService.startService(warmupDone, successAppends, failedAppends);
+    batchProducerService.startService(warmupDone, stats);
 
     if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
@@ -54,9 +59,6 @@ public class WriteBench {
       warmupDone.set(true);
     }
 
-    long lastReportTs = System.currentTimeMillis();
-    long lastReadSuccessAppends = 0;
-    long lastReadFailedAppends = 0;
     long benchDurationMs;
     if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
       benchDurationMs = Long.MAX_VALUE;
@@ -64,45 +66,58 @@ public class WriteBench {
       benchDurationMs = options.benchmarkDuration * 1000L;
     }
 
-    long totalStartTime = System.currentTimeMillis();
-    var recordSize = options.payloadOpts.recordSize;
+    printStats(options.reportIntervalSeconds, benchDurationMs);
+    batchProducerService.stopService();
+  }
+
+  private static void printStats(int reportIntervalSeconds, long benchDurationMs) {
+    long statTime = System.nanoTime();
+    long oldTime = System.nanoTime();
+
     while (true) {
-      Thread.sleep(options.reportIntervalSeconds * 1000L);
-      long now = System.currentTimeMillis();
-      long successRead = successAppends.get();
-      long failedRead = failedAppends.get();
-      long duration = now - lastReportTs;
-      double successPerSeconds = (double) (successRead - lastReadSuccessAppends) * 1000 / duration;
-      double failurePerSeconds = (double) (failedRead - lastReadFailedAppends) * 1000 / duration;
-      double throughput =
-          (double) (successRead - lastReadSuccessAppends)
-              * recordSize
-              * 1000
-              / duration
-              / 1024
-              / 1024;
+      try {
+        Thread.sleep(reportIntervalSeconds * 1000L);
+      } catch (InterruptedException e) {
+        break;
+      }
 
-      lastReportTs = now;
-      lastReadSuccessAppends = successRead;
-      lastReadFailedAppends = failedRead;
+      PeriodStats periodStat = stats.getPeriodStats();
+      long now = System.nanoTime();
+      double elapsed = (now - oldTime) / 1e9;
+      double publishRate = periodStat.messagesSent / elapsed;
+      double publishThroughput = periodStat.bytesSent / elapsed / 1024 / 1024;
 
-      System.out.println(
+      log.info(
           String.format(
-              "[Append]: success %f record/s, failed %f record/s, throughput %f MB/s",
-              successPerSeconds, failurePerSeconds, throughput));
-      benchDurationMs -= duration;
+              "Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - p50: %.2f - p99: %.2f - p99.9: %.2f - Max: %.2f",
+              publishRate,
+              publishThroughput,
+              Utils.getLatencyInMs(periodStat.publishLatency.getMean()),
+              Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(50)),
+              Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(99)),
+              Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(99.9)),
+              Utils.getLatencyInMs(periodStat.publishLatency.getMaxValueAsDouble())));
+
+      oldTime = now;
       if (benchDurationMs <= 0) {
-        batchProducerService.stopProducer();
         break;
       }
     }
 
-    long totalEndTime = System.currentTimeMillis();
-    long totalSuccess = successAppends.get();
-    double totalAvgThroughput =
-        (double) totalSuccess * recordSize * 1000 / (totalEndTime - totalStartTime) / 1024 / 1024;
-    System.out.println(String.format("TotalAvgThroughput: %.2f MB/s", totalAvgThroughput));
-    batchProducerService.stopService();
+    batchProducerService.stopProducer();
+
+    long endTime = System.nanoTime();
+    double elapsed = (endTime - statTime) / 1e9;
+    double publishRate = stats.totalMessagesSent.sum() / elapsed;
+    double publishThroughput = stats.totalBytesSent.sum() / elapsed / 1024 / 1024;
+    Histogram latency = stats.publishLatencyRecorder.getIntervalHistogram();
+    log.info(
+        String.format(
+            "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - Max: %.2f",
+            publishRate,
+            publishThroughput,
+            Utils.getLatencyInMs(latency.getMean()),
+            Utils.getLatencyInMs(latency.getMaxValueAsDouble())));
   }
 
   @NotNull
@@ -233,8 +248,6 @@ public class WriteBench {
           + streamCount
           + ", shardCount="
           + shardCount
-          + ", threadCount="
-          + threadCount
           + ", streamReplicationFactor="
           + streamReplicationFactor
           + ", streamBacklogDuration="
@@ -243,14 +256,19 @@ public class WriteBench {
           + fixedStreamName
           + ", doNotCreateStream="
           + doNotCreateStream
+          + ", path='"
+          + path
+          + '\''
+          + ", threadCount="
+          + threadCount
           + ", batchProducerOpts="
           + batchProducerOpts
+          + ", rateLimit="
+          + rateLimit
           + ", payloadOpts="
           + payloadOpts
           + ", reportIntervalSeconds="
           + reportIntervalSeconds
-          + ", rateLimit="
-          + rateLimit
           + ", benchmarkDuration="
           + benchmarkDuration
           + ", warm="
