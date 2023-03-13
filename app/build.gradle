@@ -26,6 +26,8 @@ dependencies {
     annotationProcessor 'info.picocli:picocli-codegen:4.6.3'
 
     implementation group: 'io.grpc', name: 'grpc-api', version: '1.45.1'
+
+    implementation group: 'org.hdrhistogram', name: 'HdrHistogram', version: '2.1.12'
 }
 
 compileJava {

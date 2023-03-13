@@ -1,18 +1,25 @@
 package io.hstream.tools;
 
+import static io.hstream.tools.Utils.getLatencyInMs;
+
 import io.hstream.HStreamClient;
+import io.hstream.tools.Stats.PeriodStats;
+import io.hstream.tools.Stats.Stats;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
+import org.HdrHistogram.Histogram;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 public class ReadBench {
-  private static final AtomicLong successReads = new AtomicLong();
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
+  private static final Stats stats = new Stats();
+  private static final Logger log = LoggerFactory.getLogger(WriteBench.class);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -66,7 +73,8 @@ public class ReadBench {
     System.out.printf("read from streams : %s\n", String.join(",", streams));
 
     var consumeService =
-        new ConsumeService(client, streams, options.actTimeout, warmupDone, successReads);
+        new ConsumeService(
+            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize);
     consumeService.startConsume();
 
     if (options.warm >= 0) {
@@ -75,9 +83,6 @@ public class ReadBench {
       warmupDone.set(true);
     }
 
-    long lastReportTs = System.currentTimeMillis();
-    long lastReadSuccessReads = 0;
-
     long benchDurationMs;
     if (options.benchmarkDuration <= 0 || options.benchmarkDuration >= Long.MAX_VALUE / 1000) {
       benchDurationMs = Long.MAX_VALUE;
@@ -85,32 +90,66 @@ public class ReadBench {
       benchDurationMs = options.benchmarkDuration * 1000L;
     }
 
+    printStats(options.reportIntervalSeconds, benchDurationMs, options.latencyMode);
+    consumeService.stopConsume();
+  }
+
+  private static void printStats(
+      int reportIntervalSeconds, long benchDurationMs, boolean latencyMode) {
+    long statTime = System.nanoTime();
+    long oldTime = System.nanoTime();
+
     while (true) {
-      Thread.sleep(options.reportIntervalSeconds * 1000L);
-      long now = System.currentTimeMillis();
-      long successRead = successReads.get();
-      long duration = now - lastReportTs;
-      double successPerSeconds = (double) (successRead - lastReadSuccessReads) * 1000 / duration;
-      double throughput =
-          (double) (successRead - lastReadSuccessReads)
-              * options.payloadOpts.recordSize
-              * 1000
-              / duration
-              / 1024
-              / 1024;
+      try {
+        Thread.sleep(reportIntervalSeconds * 1000L);
+      } catch (InterruptedException e) {
+        break;
+      }
 
-      lastReportTs = now;
-      lastReadSuccessReads = successRead;
+      PeriodStats periodStat = stats.getPeriodStats();
+      long now = System.nanoTime();
+      double elapsed = (now - oldTime) / 1e9;
 
-      System.out.println(
-          String.format("[Read]: %f record/s, throughput %f MB/s", successPerSeconds, throughput));
-      benchDurationMs -= duration;
+      double consumeRate = periodStat.messagesReceived / elapsed;
+      double consumeThroughput = periodStat.bytesReceived / elapsed / 1024 / 1024;
+
+      if (latencyMode) {
+        log.info(
+            String.format(
+                "Consume rate %.2f msg/s / %.2f MB/s "
+                    + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p99: %.2f - p99.9: %.2f - Max: %.2f",
+                consumeRate,
+                consumeThroughput,
+                getLatencyInMs(periodStat.endToEndLatency.getMean()),
+                getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(50)),
+                getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99)),
+                getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99.9)),
+                getLatencyInMs(periodStat.endToEndLatency.getMaxValueAsDouble())));
+      } else {
+        log.info(
+            String.format("Consume rate %.2f msg/s / %.2f MB/s", consumeRate, consumeThroughput));
+      }
+
+      oldTime = now;
       if (benchDurationMs <= 0) {
         break;
       }
     }
 
-    consumeService.stopConsume();
+    long endTime = System.nanoTime();
+    double elapsed = (endTime - statTime) / 1e9;
+    double consumeRate = stats.totalMessagesReceived.sum() / elapsed;
+    double consumeThroughput = stats.totalBytesReceived.sum() / elapsed / 1024 / 1024;
+    Histogram latency = stats.endToEndLatencyRecorder.getIntervalHistogram();
+    log.info(
+        String.format(
+            "[Total]: Consume rate %.2f msg/s / %.2f MB/s", consumeRate, consumeThroughput));
+    if (latencyMode) {
+      log.info(
+          String.format(
+              "[Total]: E2E Latency (ms) avg: %.2f - Max: %.2f",
+              getLatencyInMs(latency.getMean()), getLatencyInMs(latency.getMaxValueAsDouble())));
+    }
   }
 
   private static List<String> readStreams(String file) throws FileNotFoundException {
@@ -187,6 +226,11 @@ public class ReadBench {
     @CommandLine.Option(names = "--report-interval", description = "in seconds")
     int reportIntervalSeconds = 3;
 
+    @CommandLine.Option(
+        names = {"-l", "--latency"},
+        description = "use latency mode")
+    boolean latencyMode = false;
+
     @Override
     public String toString() {
       return "Options{"
@@ -229,6 +273,8 @@ public class ReadBench {
           + warm
           + ", reportIntervalSeconds="
           + reportIntervalSeconds
+          + ", latencyMode="
+          + latencyMode
           + '}';
     }
   }

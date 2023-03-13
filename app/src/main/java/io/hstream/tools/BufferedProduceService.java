@@ -5,6 +5,7 @@ import io.grpc.Status;
 import io.hstream.BufferedProducer;
 import io.hstream.HStreamClient;
 import io.hstream.Record;
+import io.hstream.tools.Stats.Stats;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -13,7 +14,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class BufferedProduceService {
   private final List<List<BufferedProducer>> producersPerThread;
@@ -51,10 +51,9 @@ public class BufferedProduceService {
     }
   }
 
-  public void startService(
-      AtomicBoolean warmupDone, AtomicLong successAppends, AtomicLong failedAppends) {
+  public void startService(AtomicBoolean warmupDone, Stats stats) {
     for (var producers : producersPerThread) {
-      service.submit(() -> writeWithStats(producers, warmupDone, successAppends, failedAppends));
+      service.submit(() -> writeWithStats(producers, warmupDone, stats));
     }
   }
 
@@ -87,10 +86,7 @@ public class BufferedProduceService {
   }
 
   private void writeWithStats(
-      List<BufferedProducer> producers,
-      AtomicBoolean warmupDone,
-      AtomicLong successAppends,
-      AtomicLong failedAppends) {
+      List<BufferedProducer> producers, AtomicBoolean warmupDone, Stats stats) {
     Random random = new Random();
     Record record = Utils.makeRecord(payloadType, recordSize);
     while (true) {
@@ -103,6 +99,7 @@ public class BufferedProduceService {
         limiter.acquire();
         String key = "test_" + random.nextInt(partitionKeys);
         record.setPartitionKey(key);
+        final long sendTime = System.nanoTime();
         producer
             .write(record)
             .handle(
@@ -116,12 +113,14 @@ public class BufferedProduceService {
                     var errorCode = status.getCode();
                     if (errorCode == Status.UNAVAILABLE.getCode()
                         || errorCode == Status.DEADLINE_EXCEEDED.getCode()) {
-                      failedAppends.incrementAndGet();
+                      stats.recordSendFailed();
                     } else {
                       System.exit(1);
                     }
                   } else {
-                    successAppends.incrementAndGet();
+                    long latencyMicros =
+                        TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - sendTime);
+                    stats.recordMessageSend(recordSize, latencyMicros);
                   }
                   return null;
                 });

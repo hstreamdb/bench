@@ -150,4 +150,8 @@ public class Utils {
             .build();
     return Record.newBuilder().hRecord(hRecord).build();
   }
+
+  public static double getLatencyInMs(double latency) {
+    return latency / 1000;
+  }
 }
