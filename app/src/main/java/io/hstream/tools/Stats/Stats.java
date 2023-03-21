@@ -53,12 +53,34 @@ public class Stats {
     messagesReceived.increment();
     bytesReceived.add(recordSize);
     totalMessagesReceived.increment();
-    totalBytesReceived.increment();
+    totalBytesReceived.add(recordSize);
 
     if (latencyMics > 0) {
       endToEndLatencyRecorder.recordValue(latencyMics);
       endToEndCumulativeLatencyRecorder.recordValue(latencyMics);
     }
+  }
+
+  public void resetPubStats() {
+    messagesSent.reset();
+    messagesSentError.reset();
+    bytesSent.reset();
+    totalMessagesSent.reset();
+    totalBytesSent.reset();
+    totalMessagesSentError.reset();
+    publishLatencyRecorder.reset();
+    cumulativePublishLatencyRecorder.reset();
+  }
+
+  public void resetSubStats() {
+    messagesReceived.reset();
+    messagesReceivedError.reset();
+    bytesReceived.reset();
+    totalMessagesReceived.reset();
+    totalBytesReceived.reset();
+    totalMessagesReceivedError.reset();
+    endToEndLatencyRecorder.reset();
+    endToEndCumulativeLatencyRecorder.reset();
   }
 
   public PeriodStats getPeriodStats() {

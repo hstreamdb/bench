@@ -6,6 +6,7 @@ import io.hstream.BufferedProducer;
 import io.hstream.HStreamClient;
 import io.hstream.Record;
 import io.hstream.tools.Stats.Stats;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -99,7 +100,7 @@ public class BufferedProduceService {
         limiter.acquire();
         String key = "test_" + random.nextInt(partitionKeys);
         record.setPartitionKey(key);
-        final long sendTime = System.nanoTime();
+        final Instant sendTime = Instant.now();
         producer
             .write(record)
             .handle(
@@ -118,8 +119,9 @@ public class BufferedProduceService {
                       System.exit(1);
                     }
                   } else {
+                    Instant curr = Instant.now();
                     long latencyMicros =
-                        TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - sendTime);
+                        TimeUnit.MILLISECONDS.toMicros(curr.toEpochMilli() - sendTime.toEpochMilli());
                     stats.recordMessageSend(recordSize, latencyMicros);
                   }
                   return null;

@@ -19,7 +19,7 @@ import picocli.CommandLine;
 public class ReadBench {
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
   private static final Stats stats = new Stats();
-  private static final Logger log = LoggerFactory.getLogger(WriteBench.class);
+  private static final Logger log = LoggerFactory.getLogger(ReadBench.class);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -74,13 +74,14 @@ public class ReadBench {
 
     var consumeService =
         new ConsumeService(
-            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize);
+            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize, options.offset);
     consumeService.startConsume();
 
     if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);
+      stats.resetSubStats();
     }
 
     long benchDurationMs;
@@ -109,7 +110,7 @@ public class ReadBench {
       PeriodStats periodStat = stats.getPeriodStats();
       long now = System.nanoTime();
       double elapsed = (now - oldTime) / 1e9;
-
+      benchDurationMs -= (now - oldTime) / 1e6;
       double consumeRate = periodStat.messagesReceived / elapsed;
       double consumeThroughput = periodStat.bytesReceived / elapsed / 1024 / 1024;
 
@@ -140,7 +141,7 @@ public class ReadBench {
     double elapsed = (endTime - statTime) / 1e9;
     double consumeRate = stats.totalMessagesReceived.sum() / elapsed;
     double consumeThroughput = stats.totalBytesReceived.sum() / elapsed / 1024 / 1024;
-    Histogram latency = stats.endToEndLatencyRecorder.getIntervalHistogram();
+    Histogram latency = stats.endToEndCumulativeLatencyRecorder.getIntervalHistogram();
     log.info(
         String.format(
             "[Total]: Consume rate %.2f msg/s / %.2f MB/s", consumeRate, consumeThroughput));
@@ -177,7 +178,7 @@ public class ReadBench {
     boolean dataGenerate = false;
 
     @CommandLine.Option(
-        names = "streams",
+        names = "--streams",
         description =
             "The path to the file containing the names of all streams to be subscribed to, one stream per line")
     String path = "src/main/resources/streams.text";
@@ -230,6 +231,9 @@ public class ReadBench {
         names = {"-l", "--latency"},
         description = "use latency mode")
     boolean latencyMode = false;
+
+    @CommandLine.Option(names = "--offset", description = "subscription start offset, should be [earliest | latest], default is earliest")
+    String offset = "earliest";
 
     @Override
     public String toString() {

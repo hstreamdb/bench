@@ -57,6 +57,7 @@ public class WriteBench {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);
+      stats.resetPubStats();
     }
 
     long benchDurationMs;
@@ -83,6 +84,7 @@ public class WriteBench {
 
       PeriodStats periodStat = stats.getPeriodStats();
       long now = System.nanoTime();
+      benchDurationMs -= (now - oldTime) / 1e6;
       double elapsed = (now - oldTime) / 1e9;
       double publishRate = periodStat.messagesSent / elapsed;
       double publishThroughput = periodStat.bytesSent / elapsed / 1024 / 1024;
@@ -110,7 +112,7 @@ public class WriteBench {
     double elapsed = (endTime - statTime) / 1e9;
     double publishRate = stats.totalMessagesSent.sum() / elapsed;
     double publishThroughput = stats.totalBytesSent.sum() / elapsed / 1024 / 1024;
-    Histogram latency = stats.publishLatencyRecorder.getIntervalHistogram();
+    Histogram latency = stats.cumulativePublishLatencyRecorder.getIntervalHistogram();
     log.info(
         String.format(
             "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - Max: %.2f",
@@ -180,7 +182,7 @@ public class WriteBench {
     boolean helpRequested = false;
 
     @CommandLine.Option(names = "--service-url")
-    String serviceUrl = "127.0.0.1:6570";
+    String serviceUrl = "hstream://127.0.0.1:6570";
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "write_bench_stream_";
