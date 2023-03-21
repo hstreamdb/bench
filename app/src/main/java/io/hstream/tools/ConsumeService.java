@@ -4,7 +4,6 @@ import io.hstream.Consumer;
 import io.hstream.HStreamClient;
 import io.hstream.Subscription;
 import io.hstream.tools.Stats.Stats;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +25,8 @@ public class ConsumeService {
     this.consumers = new ArrayList<>(streams.size());
 
     for (String stream : streams) {
-      consumers.add(createConsumer(client, stream, ackTimeout, warmupDone, stat, payloadSize, offset));
+      consumers.add(
+          createConsumer(client, stream, ackTimeout, warmupDone, stat, payloadSize, offset));
     }
   }
 
@@ -74,11 +74,12 @@ public class ConsumeService {
               if (warmupDone.get()) {
                 Instant sendTime = receivedRawRecord.getCreatedTime();
                 Instant currTime = Instant.now();
-//                long currTime = System.nanoTime();
+                //                long currTime = System.nanoTime();
                 long diffMils = currTime.toEpochMilli() - sendTime.toEpochMilli();
-//                long latencyMicros = TimeUnit.MILLISECONDS.toMicros(currTime - sendTime);
+                //                long latencyMicros = TimeUnit.MILLISECONDS.toMicros(currTime -
+                // sendTime);
                 long latencyMicros = TimeUnit.MILLISECONDS.toMicros(diffMils);
-//                System.out.printf("latencyMicros: %d\n", latencyMicros);
+                //                System.out.printf("latencyMicros: %d\n", latencyMicros);
                 stats.recordMessageReceived(payloadSize, latencyMicros);
               }
               responder.ack();

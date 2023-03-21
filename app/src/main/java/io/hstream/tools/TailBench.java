@@ -56,7 +56,13 @@ public class TailBench {
 
     var consumeService =
         new ConsumeService(
-            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize, "latest");
+            client,
+            streams,
+            options.actTimeout,
+            warmupDone,
+            stats,
+            options.payloadOpts.recordSize,
+            "latest");
 
     batchProducerService.startService(warmupDone, stats);
     consumeService.startConsume();

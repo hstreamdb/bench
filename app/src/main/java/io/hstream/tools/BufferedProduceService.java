@@ -121,7 +121,8 @@ public class BufferedProduceService {
                   } else {
                     Instant curr = Instant.now();
                     long latencyMicros =
-                        TimeUnit.MILLISECONDS.toMicros(curr.toEpochMilli() - sendTime.toEpochMilli());
+                        TimeUnit.MILLISECONDS.toMicros(
+                            curr.toEpochMilli() - sendTime.toEpochMilli());
                     stats.recordMessageSend(recordSize, latencyMicros);
                   }
                   return null;
