@@ -13,7 +13,7 @@ import picocli.CommandLine;
 
 public class TailBench {
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
-  private static final Logger log = LoggerFactory.getLogger(WriteBench.class);
+  private static final Logger log = LoggerFactory.getLogger(TailBench.class);
   private static final Stats stats = new Stats();
 
   public static void main(String[] args) throws Exception {
@@ -56,7 +56,13 @@ public class TailBench {
 
     var consumeService =
         new ConsumeService(
-            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize);
+            client,
+            streams,
+            options.actTimeout,
+            warmupDone,
+            stats,
+            options.payloadOpts.recordSize,
+            "latest");
 
     batchProducerService.startService(warmupDone, stats);
     consumeService.startConsume();
@@ -65,6 +71,8 @@ public class TailBench {
       System.out.println("Warmup ...... ");
       Thread.sleep(options.warm * 1000L);
       warmupDone.set(true);
+      stats.resetPubStats();
+      stats.resetSubStats();
     }
 
     long benchDurationMs;
@@ -94,6 +102,7 @@ public class TailBench {
       PeriodStats periodStat = stats.getPeriodStats();
       long now = System.nanoTime();
       double elapsed = (now - oldTime) / 1e9;
+      benchDurationMs -= (now - oldTime) / 1e6;
       double publishRate = periodStat.messagesSent / elapsed;
       double publishThroughput = periodStat.bytesSent / elapsed / 1024 / 1024;
       double consumeRate = periodStat.messagesReceived / elapsed;
@@ -128,7 +137,7 @@ public class TailBench {
     double publishThroughput = stats.totalBytesSent.sum() / elapsed / 1024 / 1024;
     double consumeRate = stats.totalMessagesReceived.sum() / elapsed;
     double consumeThroughput = stats.totalBytesReceived.sum() / elapsed / 1024 / 1024;
-    Histogram latency = stats.endToEndLatencyRecorder.getIntervalHistogram();
+    Histogram latency = stats.endToEndCumulativeLatencyRecorder.getIntervalHistogram();
     log.info(
         String.format(
             "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Consume rate %.2f msg/s %.2f MB/s | E2E Latency (ms) avg: %.2f - Max: %.2f",
