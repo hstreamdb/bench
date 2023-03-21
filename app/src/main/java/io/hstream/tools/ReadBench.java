@@ -74,7 +74,13 @@ public class ReadBench {
 
     var consumeService =
         new ConsumeService(
-            client, streams, options.actTimeout, warmupDone, stats, options.payloadOpts.recordSize, options.offset);
+            client,
+            streams,
+            options.actTimeout,
+            warmupDone,
+            stats,
+            options.payloadOpts.recordSize,
+            options.offset);
     consumeService.startConsume();
 
     if (options.warm >= 0) {
@@ -232,7 +238,10 @@ public class ReadBench {
         description = "use latency mode")
     boolean latencyMode = false;
 
-    @CommandLine.Option(names = "--offset", description = "subscription start offset, should be [earliest | latest], default is earliest")
+    @CommandLine.Option(
+        names = "--offset",
+        description =
+            "subscription start offset, should be [earliest | latest], default is earliest")
     String offset = "earliest";
 
     @Override
