@@ -113,7 +113,7 @@ public class TailBench {
       log.info(
           String.format(
               "Pub rate %.2f msg/s / %.2f MB/s | Consume rate %.2f msg/s %.2f MB/s | Backlog %.2f K "
-                  + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p99: %.2f - p99.9: %.2f - Max: %.2f",
+                  + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p90: %.2f - p99: %.2f - Max: %.2f",
               publishRate,
               publishThroughput,
               consumeRate,
@@ -121,8 +121,8 @@ public class TailBench {
               backlog / 1000.0,
               Utils.getLatencyInMs(periodStat.endToEndLatency.getMean()),
               Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(50)),
+              Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(90)),
               Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99)),
-              Utils.getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99.9)),
               Utils.getLatencyInMs(periodStat.endToEndLatency.getMaxValueAsDouble())));
 
       oldTime = now;
@@ -140,12 +140,16 @@ public class TailBench {
     Histogram latency = stats.endToEndCumulativeLatencyRecorder.getIntervalHistogram();
     log.info(
         String.format(
-            "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Consume rate %.2f msg/s %.2f MB/s | E2E Latency (ms) avg: %.2f - Max: %.2f",
+            "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Consume rate %.2f msg/s %.2f MB/s "
+                + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p90: %.2f - p99: %.2f - Max: %.2f",
             publishRate,
             publishThroughput,
             consumeRate,
             consumeThroughput,
             Utils.getLatencyInMs(latency.getMean()),
+            Utils.getLatencyInMs(latency.getValueAtPercentile(50)),
+            Utils.getLatencyInMs(latency.getValueAtPercentile(90)),
+            Utils.getLatencyInMs(latency.getValueAtPercentile(99)),
             Utils.getLatencyInMs(latency.getMaxValueAsDouble())));
   }
 
