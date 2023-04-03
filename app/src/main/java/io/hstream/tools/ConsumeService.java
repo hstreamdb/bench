@@ -74,12 +74,9 @@ public class ConsumeService {
               if (warmupDone.get()) {
                 Instant sendTime = receivedRawRecord.getCreatedTime();
                 Instant currTime = Instant.now();
-                //                long currTime = System.nanoTime();
-                long diffMils = currTime.toEpochMilli() - sendTime.toEpochMilli();
-                //                long latencyMicros = TimeUnit.MILLISECONDS.toMicros(currTime -
-                // sendTime);
-                long latencyMicros = TimeUnit.MILLISECONDS.toMicros(diffMils);
-                //                System.out.printf("latencyMicros: %d\n", latencyMicros);
+                long latencyMicros =
+                    TimeUnit.NANOSECONDS.toMicros(
+                        Utils.instantToNano(currTime) - Utils.instantToNano(sendTime));
                 stats.recordMessageReceived(payloadSize, latencyMicros);
               }
               responder.ack();

@@ -2,10 +2,16 @@ package io.hstream.tools;
 
 import static io.hstream.tools.Utils.persistentStreamInfo;
 
+import io.grpc.Status;
 import io.hstream.*;
 import io.hstream.tools.Stats.PeriodStats;
 import io.hstream.tools.Stats.Stats;
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.HdrHistogram.Histogram;
@@ -19,7 +25,9 @@ public class WriteBench {
   private static final AtomicBoolean warmupDone = new AtomicBoolean(false);
   private static final Logger log = LoggerFactory.getLogger(WriteBench.class);
   private static final Stats stats = new Stats();
-  private static BufferedProduceService batchProducerService;
+  private static BufferedProduceService bufferedProducerService;
+  private static ExecutorService producerService;
+  private static final AtomicBoolean terminate = new AtomicBoolean(false);
 
   public static void main(String[] args) throws Exception {
     var options = new Options();
@@ -43,15 +51,11 @@ public class WriteBench {
       persistentStreamInfo(options.path, streams);
     }
 
-    batchProducerService =
-        new BufferedProduceService(
-            client,
-            streams,
-            options.threadCount,
-            options.rateLimit,
-            options.batchProducerOpts,
-            options.payloadOpts);
-    batchProducerService.startService(warmupDone, stats);
+    if (options.unBuffered) {
+      benchProduce(client, options, streams);
+    } else {
+      benchBufferedProduce(client, options, streams);
+    }
 
     if (options.warm >= 0) {
       System.out.println("Warmup ...... ");
@@ -68,7 +72,89 @@ public class WriteBench {
     }
 
     printStats(options.reportIntervalSeconds, benchDurationMs);
-    batchProducerService.stopService();
+    if (options.unBuffered) {
+      producerService.shutdown();
+      producerService.awaitTermination(15, TimeUnit.SECONDS);
+    } else {
+      bufferedProducerService.stopService();
+    }
+  }
+
+  private static void benchProduce(
+      HStreamClient client, Options options, ArrayList<String> streams) {
+    var threadsCnt = Math.min(options.threadCount, streams.size());
+    producerService = Executors.newFixedThreadPool(threadsCnt);
+    List<List<Producer>> producersPerThread = new ArrayList<>(threadsCnt);
+
+    for (int i = 0; i < threadsCnt; i++) {
+      producersPerThread.add(new ArrayList<>());
+    }
+    for (int i = 0; i < streams.size(); i++) {
+      var producer = client.newProducer().stream(streams.get(i)).build();
+      producersPerThread.get(i % threadsCnt).add(producer);
+    }
+
+    for (var producers : producersPerThread) {
+      producerService.submit(
+          () -> {
+            var limiter = new Semaphore(1);
+            Random random = new Random();
+            Record record =
+                Utils.makeRecord(options.payloadOpts.payloadType, options.payloadOpts.recordSize);
+            while (!terminate.get()) {
+              for (var producer : producers) {
+                try {
+                  limiter.acquire();
+                } catch (InterruptedException e) {
+                  throw new RuntimeException(e);
+                }
+                String key = "test_" + random.nextInt(options.payloadOpts.partitionKeys);
+                record.setPartitionKey(key);
+                final Instant sendTime = Instant.now();
+                producer
+                    .write(record)
+                    .handle(
+                        (recordId, throwable) -> {
+                          limiter.release();
+                          if (!warmupDone.get()) {
+                            return null;
+                          }
+
+                          if (throwable != null) {
+                            var status = Status.fromThrowable(throwable.getCause());
+                            var errorCode = status.getCode();
+                            if (errorCode == Status.UNAVAILABLE.getCode()
+                                || errorCode == Status.DEADLINE_EXCEEDED.getCode()) {
+                              stats.recordSendFailed();
+                            } else {
+                              System.exit(1);
+                            }
+                          } else {
+                            Instant curr = Instant.now();
+                            long latencyMicros =
+                                TimeUnit.NANOSECONDS.toMicros(
+                                    Utils.instantToNano(curr) - Utils.instantToNano(sendTime));
+                            stats.recordMessageSend(options.payloadOpts.recordSize, latencyMicros);
+                          }
+                          return null;
+                        });
+              }
+            }
+          });
+    }
+  }
+
+  private static void benchBufferedProduce(
+      HStreamClient client, Options options, ArrayList<String> streams) {
+    bufferedProducerService =
+        new BufferedProduceService(
+            client,
+            streams,
+            options.threadCount,
+            options.rateLimit,
+            options.batchProducerOpts,
+            options.payloadOpts);
+    bufferedProducerService.startService(warmupDone, stats);
   }
 
   private static void printStats(int reportIntervalSeconds, long benchDurationMs) {
@@ -91,22 +177,25 @@ public class WriteBench {
 
       log.info(
           String.format(
-              "Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - p50: %.2f - p99: %.2f - p99.9: %.2f - Max: %.2f",
+              "Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - p50: %.2f - p90: %.2f - p99: %.2f - Max: %.2f",
               publishRate,
               publishThroughput,
               Utils.getLatencyInMs(periodStat.publishLatency.getMean()),
               Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(50)),
+              Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(90)),
               Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(99)),
-              Utils.getLatencyInMs(periodStat.publishLatency.getValueAtPercentile(99.9)),
               Utils.getLatencyInMs(periodStat.publishLatency.getMaxValueAsDouble())));
 
       oldTime = now;
       if (benchDurationMs <= 0) {
+        terminate.set(true);
         break;
       }
     }
 
-    batchProducerService.stopProducer();
+    if (bufferedProducerService != null) {
+      bufferedProducerService.stopProducer();
+    }
 
     long endTime = System.nanoTime();
     double elapsed = (endTime - statTime) / 1e9;
@@ -115,10 +204,13 @@ public class WriteBench {
     Histogram latency = stats.cumulativePublishLatencyRecorder.getIntervalHistogram();
     log.info(
         String.format(
-            "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - Max: %.2f",
+            "[Total]: Pub rate %.2f msg/s / %.2f MB/s | Pub Latency (ms) avg: %.2f - p50: %.2f - p90: %.2f - p99: %.2f - Max: %.2f",
             publishRate,
             publishThroughput,
             Utils.getLatencyInMs(latency.getMean()),
+            Utils.getLatencyInMs(latency.getValueAtPercentile(50)),
+            Utils.getLatencyInMs(latency.getValueAtPercentile(90)),
+            Utils.getLatencyInMs(latency.getValueAtPercentile(99)),
             Utils.getLatencyInMs(latency.getMaxValueAsDouble())));
   }
 
@@ -174,7 +266,6 @@ public class WriteBench {
   }
 
   static class Options {
-
     @CommandLine.Option(
         names = {"-h", "--help"},
         usageHelp = true,
@@ -214,6 +305,11 @@ public class WriteBench {
 
     @CommandLine.Option(names = "--thread-count", description = "threads count use to write.")
     int threadCount = streamCount;
+
+    @CommandLine.Option(
+        names = "--un-buffered",
+        description = "use unbuffered producer, default is false")
+    boolean unBuffered = false;
 
     @CommandLine.ArgGroup(exclusive = false)
     Utils.BufferedProducerOpts batchProducerOpts = new Utils.BufferedProducerOpts();
@@ -263,6 +359,8 @@ public class WriteBench {
           + '\''
           + ", threadCount="
           + threadCount
+          + ", unBuffered="
+          + unBuffered
           + ", batchProducerOpts="
           + batchProducerOpts
           + ", rateLimit="

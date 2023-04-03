@@ -4,6 +4,7 @@ import io.hstream.*;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Random;
 import picocli.CommandLine;
@@ -17,6 +18,10 @@ public class Utils {
       writer.write("\n");
     }
     writer.close();
+  }
+
+  static long instantToNano(Instant now) {
+    return now.getEpochSecond() * 1_000_000_000L + now.getNano();
   }
 
   public enum CompressionAlgo {

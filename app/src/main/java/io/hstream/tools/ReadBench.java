@@ -124,13 +124,13 @@ public class ReadBench {
         log.info(
             String.format(
                 "Consume rate %.2f msg/s / %.2f MB/s "
-                    + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p99: %.2f - p99.9: %.2f - Max: %.2f",
+                    + "| E2E Latency (ms) avg: %.2f - p50: %.2f - p90: %.2f - p99: %.2f - Max: %.2f",
                 consumeRate,
                 consumeThroughput,
                 getLatencyInMs(periodStat.endToEndLatency.getMean()),
                 getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(50)),
+                getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(90)),
                 getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99)),
-                getLatencyInMs(periodStat.endToEndLatency.getValueAtPercentile(99.9)),
                 getLatencyInMs(periodStat.endToEndLatency.getMaxValueAsDouble())));
       } else {
         log.info(
@@ -154,8 +154,12 @@ public class ReadBench {
     if (latencyMode) {
       log.info(
           String.format(
-              "[Total]: E2E Latency (ms) avg: %.2f - Max: %.2f",
-              getLatencyInMs(latency.getMean()), getLatencyInMs(latency.getMaxValueAsDouble())));
+              "[Total]: E2E Latency (ms) avg: %.2f - p50: %.2f - p90: %.2f - p99: %.2f - Max: %.2f",
+              getLatencyInMs(latency.getMean()),
+              getLatencyInMs(latency.getValueAtPercentile(50)),
+              getLatencyInMs(latency.getValueAtPercentile(90)),
+              getLatencyInMs(latency.getValueAtPercentile(99)),
+              getLatencyInMs(latency.getMaxValueAsDouble())));
     }
   }
 
