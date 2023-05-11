@@ -161,7 +161,7 @@ public class TailBench {
     boolean helpRequested = false;
 
     @CommandLine.Option(names = "--service-url")
-    String serviceUrl = "127.0.0.1:6570";
+    String serviceUrl = "hstream://127.0.0.1:6570";
 
     @CommandLine.Option(names = "--stream-name-prefix")
     String streamNamePrefix = "read_bench_stream_";

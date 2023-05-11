@@ -66,6 +66,7 @@ public class ConsumeService {
             .ackTimeoutSeconds(ackTimeout)
             .offset(subOffset)
             .build());
+    System.out.println("created subscription: " + subscriptionId);
     return client
         .newConsumer()
         .subscription(subscriptionId)
