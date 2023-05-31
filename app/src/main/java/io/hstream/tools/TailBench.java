@@ -185,7 +185,7 @@ public class TailBench {
     Utils.BufferedProducerOpts batchProducerOpts = new Utils.BufferedProducerOpts();
 
     @CommandLine.Option(names = "--rate-limit")
-    int rateLimit = 100000;
+    long rateLimit = 100000;
 
     @CommandLine.ArgGroup(exclusive = false)
     Utils.PayloadOpts payloadOpts = new Utils.PayloadOpts();

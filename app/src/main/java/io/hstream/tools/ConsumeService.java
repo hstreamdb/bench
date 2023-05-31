@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConsumeService {
   private final List<Consumer> consumers;
+  private final List<Subscription> subs;
+  private final HStreamClient client;
 
   public ConsumeService(
       HStreamClient client,
@@ -23,10 +25,11 @@ public class ConsumeService {
       int payloadSize,
       String offset) {
     this.consumers = new ArrayList<>(streams.size());
+    this.subs = new ArrayList<>(streams.size());
+    this.client = client;
 
     for (String stream : streams) {
-      consumers.add(
-          createConsumer(client, stream, ackTimeout, warmupDone, stat, payloadSize, offset));
+      consumers.add(createConsumer(stream, ackTimeout, warmupDone, stat, payloadSize, offset));
     }
   }
 
@@ -40,10 +43,12 @@ public class ConsumeService {
     for (var consumer : consumers) {
       consumer.stopAsync().awaitTerminated();
     }
+    for (var sub : subs) {
+      client.deleteSubscription(sub.getSubscriptionId(), true);
+    }
   }
 
   private Consumer createConsumer(
-      HStreamClient client,
       String streamName,
       int ackTimeout,
       AtomicBoolean warmupDone,
@@ -60,12 +65,14 @@ public class ConsumeService {
       throw new RuntimeException("invalied sub offset: " + offset);
     }
 
-    client.createSubscription(
+    var sub =
         Subscription.newBuilder().stream(streamName)
             .subscription(subscriptionId)
             .ackTimeoutSeconds(ackTimeout)
             .offset(subOffset)
-            .build());
+            .build();
+    client.createSubscription(sub);
+    subs.add(sub);
     System.out.println("created subscription: " + subscriptionId);
     return client
         .newConsumer()
@@ -85,9 +92,11 @@ public class ConsumeService {
         .hRecordReceiver(
             (receivedHRecord, responder) -> {
               if (warmupDone.get()) {
-                long sendTime = receivedHRecord.getCreatedTime().toEpochMilli();
-                long currTime = System.currentTimeMillis();
-                long latencyMicros = TimeUnit.MILLISECONDS.toMicros(currTime - sendTime);
+                Instant sendTime = receivedHRecord.getCreatedTime();
+                Instant currTime = Instant.now();
+                long latencyMicros =
+                    TimeUnit.NANOSECONDS.toMicros(
+                        Utils.instantToNano(currTime) - Utils.instantToNano(sendTime));
                 stats.recordMessageReceived(payloadSize, latencyMicros);
               }
               responder.ack();

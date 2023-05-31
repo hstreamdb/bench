@@ -29,7 +29,7 @@ public class BufferedProduceService {
       HStreamClient client,
       List<String> streams,
       int threadCount,
-      int rateLimit,
+      long rateLimit,
       Utils.BufferedProducerOpts opts,
       Utils.PayloadOpts payloadOpts) {
     this.service = Executors.newFixedThreadPool(threadCount);
@@ -88,7 +88,7 @@ public class BufferedProduceService {
 
   private void writeWithStats(
       List<BufferedProducer> producers, AtomicBoolean warmupDone, Stats stats) {
-    Random random = new Random();
+    Random random = new Random(System.currentTimeMillis());
     Record record = Utils.makeRecord(payloadType, recordSize);
     while (true) {
       if (terminateFlag.get()) {
