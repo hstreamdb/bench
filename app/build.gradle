@@ -16,8 +16,8 @@ configurations.all {
 }
 
 dependencies {
-    implementation 'io.hstream:hstreamdb-java:0.14.0-SNAPSHOT'
-    implementation 'com.google.guava:guava:30.1.1-jre'
+    implementation 'io.hstream:hstreamdb-java:0.16.0-SNAPSHOT'
+    implementation 'com.google.guava:guava:31.1-jre'
 
     implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
     implementation group: 'org.apache.logging.log4j', name: 'log4j-slf4j-impl', version: '2.17.1'
@@ -25,7 +25,7 @@ dependencies {
     implementation 'info.picocli:picocli:4.6.3'
     annotationProcessor 'info.picocli:picocli-codegen:4.6.3'
 
-    implementation group: 'io.grpc', name: 'grpc-api', version: '1.45.1'
+    implementation group: 'io.grpc', name: 'grpc-api', version: '1.54.1'
 
     implementation group: 'org.hdrhistogram', name: 'HdrHistogram', version: '2.1.12'
 }

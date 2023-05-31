@@ -138,7 +138,7 @@ public class Utils {
   }
 
   static Record makeRawRecord(int recordSize) {
-    Random random = new Random();
+    Random random = new Random(System.currentTimeMillis());
     byte[] payload = new byte[recordSize];
     random.nextBytes(payload);
     return Record.newBuilder().rawRecord(payload).build();
