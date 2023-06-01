@@ -54,7 +54,8 @@ jobs:
             then JOB_STATUS_EMOJI=':white_check_mark:'
             else JOB_STATUS_EMOJI=':x:'
           fi
-          SPEED=$(cat results.txt |grep TotalAvgThroughput |cut -d' ' -f2)
+          # FIXME: Let writeBench support structural output
+          SPEED=$(cat results.txt |grep "\[Total\]" |cut -d' ' -f13)
           curl -X POST -H 'Content-Type: application/json' \
             ${{ secrets.SLACK_WEB_HOOK_URL }} \
             --data "{\"data\": \": ${JOB_STATUS_EMOJI} ${SPEED} MB/s \n\
