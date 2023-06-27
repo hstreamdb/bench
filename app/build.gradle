@@ -55,6 +55,11 @@ task(readBench, dependsOn: 'classes', type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
 }
 
+task(readerBench, dependsOn: 'classes', type: JavaExec) {
+    main = 'io.hstream.tools.ReaderBench'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
 task(writeBench, dependsOn: 'classes', type: JavaExec) {
     main = 'io.hstream.tools.WriteBench'
     classpath = sourceSets.main.runtimeClasspath
@@ -80,6 +85,13 @@ task writeBenchTask(type: CreateStartScripts) {
 task readBenchTask(type: CreateStartScripts) {
     mainClassName = 'io.hstream.tools.ReadBench'
     applicationName = 'readBench'
+    outputDir = startScripts.outputDir
+    classpath = startScripts.classpath
+}
+
+task readerBenchTask(type: CreateStartScripts) {
+    mainClassName = 'io.hstream.tools.ReaderBench'
+    applicationName = 'readerBench'
     outputDir = startScripts.outputDir
     classpath = startScripts.classpath
 }
