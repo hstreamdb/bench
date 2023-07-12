@@ -5,10 +5,7 @@ import static io.hstream.tools.Utils.getLatencyInMs;
 import io.hstream.HStreamClient;
 import io.hstream.tools.Stats.PeriodStats;
 import io.hstream.tools.Stats.Stats;
-import java.io.*;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.HdrHistogram.Histogram;
@@ -69,7 +66,7 @@ public class ReadBench {
       Thread.sleep(10000L);
     }
 
-    var streams = readStreams(options.path);
+    var streams = Utils.readStreams(options.path);
     System.out.printf("read from streams : %s\n", String.join(",", streams));
 
     var consumeService =
@@ -161,15 +158,6 @@ public class ReadBench {
               getLatencyInMs(latency.getValueAtPercentile(99)),
               getLatencyInMs(latency.getMaxValueAsDouble())));
     }
-  }
-
-  private static List<String> readStreams(String file) throws FileNotFoundException {
-    var streamNames = new ArrayList<String>();
-    Scanner s = new Scanner(new FileReader(file));
-    while (s.hasNext()) {
-      streamNames.add(s.nextLine());
-    }
-    return streamNames;
   }
 
   static class Options {

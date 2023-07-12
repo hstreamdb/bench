@@ -1,12 +1,12 @@
 package io.hstream.tools;
 
 import io.hstream.*;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Scanner;
 import picocli.CommandLine;
 
 public class Utils {
@@ -22,6 +22,15 @@ public class Utils {
 
   static long instantToNano(Instant now) {
     return now.getEpochSecond() * 1_000_000_000L + now.getNano();
+  }
+
+  static List<String> readStreams(String file) throws FileNotFoundException {
+    var streamNames = new ArrayList<String>();
+    Scanner s = new Scanner(new FileReader(file));
+    while (s.hasNext()) {
+      streamNames.add(s.nextLine());
+    }
+    return streamNames;
   }
 
   public enum CompressionAlgo {
@@ -145,13 +154,14 @@ public class Utils {
   }
 
   static Record makeHRecord(int recordSize) {
-    int paddingSize = recordSize > 96 ? recordSize - 96 : 0;
+    int paddingSize = recordSize > 48 ? recordSize - 48 : 0;
     HRecord hRecord =
         HRecord.newBuilder()
-            .put("int", 10)
-            .put("boolean", true)
-            .put("array", HArray.newBuilder().add(1).add(2).add(3).build())
-            .put("string", "h".repeat(paddingSize))
+            .put("c_int", 10)
+            .put("c_smallint", 1)
+            .put("c_bigint", 1844674567)
+            .put("c_boolean", true)
+            .put("c_string", "h".repeat(paddingSize))
             .build();
     return Record.newBuilder().hRecord(hRecord).build();
   }

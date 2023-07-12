@@ -6,3 +6,4 @@
 
 nohup ./gradlew writeBench --args='--service-url hstream://172.23.102.164 --stream-count 32 --stream-backlog-duration 7200 --thread-count 16 --shard-count 1 --record-size 1024 --rate-limit 300000 --batch-bytes-limit 327680 --batch-age-limit -1 --total-bytes-limit 1024000 --bench-time -1 --warmup 30 --compression none --fixed-stream-name --persistent-stream-path streams.txt --not-create-stream --report-interval 60' >write_log 2>&1 &
 
+# ./gradlew createConnector --args='--service-url hstream://172.25.43.216 --connector-type SINK --target blackhole --thread-count 8 --streams streams.txt --clear'

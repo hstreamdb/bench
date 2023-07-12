@@ -1,18 +1,15 @@
 package io.hstream.tools;
 
 import static io.hstream.tools.Utils.getLatencyInMs;
+import static io.hstream.tools.Utils.readStreams;
 
 import io.hstream.HStreamClient;
 import io.hstream.StreamShardOffset;
 import io.hstream.StreamShardReader;
 import io.hstream.tools.Stats.PeriodStats;
 import io.hstream.tools.Stats.Stats;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -95,7 +92,7 @@ public class ReaderBench {
                 .newStreamShardReader()
                 .streamName(stream)
                 .shardId(shard.getShardId())
-                .shardOffset(specialOffset)
+                .from(specialOffset)
                 .receiver(
                     (receivedRecord -> {
                       if (warmupDone.get()) {
@@ -191,15 +188,6 @@ public class ReaderBench {
               getLatencyInMs(latency.getValueAtPercentile(99)),
               getLatencyInMs(latency.getMaxValueAsDouble())));
     }
-  }
-
-  private static List<String> readStreams(String file) throws FileNotFoundException {
-    var streamNames = new ArrayList<String>();
-    Scanner s = new Scanner(new FileReader(file));
-    while (s.hasNext()) {
-      streamNames.add(s.nextLine());
-    }
-    return streamNames;
   }
 
   static class Options {
