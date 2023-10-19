@@ -117,6 +117,13 @@ task writeQpsBenchTask(type: CreateStartScripts) {
     classpath = startScripts.classpath
 }
 
+task writeLatencyBenchTask(type: CreateStartScripts) {
+    mainClassName = 'io.hstream.tools.WriteLatencyBench'
+    applicationName = 'writeLatencyBench'
+    outputDir = startScripts.outputDir
+    classpath = startScripts.classpath
+}
+
 applicationDistribution.into("bin") {
     duplicatesStrategy= DuplicatesStrategy.EXCLUDE
     from(writeBenchTask)
