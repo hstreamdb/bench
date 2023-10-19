@@ -22,7 +22,18 @@ public class WriteLatencyBench {
       return;
     }
 
-    HStreamClient client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
+    HStreamClient client;
+    if (options.enableTLS) {
+      client =
+          HStreamClient.builder()
+              .serviceUrl(options.serviceUrl)
+              .enableTls()
+              .tlsCaPath(options.caPath)
+              .build();
+    } else {
+      client = HStreamClient.builder().serviceUrl(options.serviceUrl).build();
+    }
+
     var streamName = options.streamNamePrefix + UUID.randomUUID();
     client.createStream(streamName, options.streamReplicationFactor, options.shardCount);
     try {
@@ -77,5 +88,11 @@ public class WriteLatencyBench {
 
     @CommandLine.Option(names = "--send-frequency")
     int sendFrequency = 5;
+
+    @CommandLine.Option(names = "--enable-tls")
+    boolean enableTLS = false;
+
+    @CommandLine.Option(names = "--ca-path")
+    String caPath = "";
   }
 }
